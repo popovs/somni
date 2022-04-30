@@ -13,7 +13,7 @@
 #' TagSheet <- read.csv("TagSheet.csv")
 #' prep_tag_sheet(TagSheet)
 prep_tag_sheet <- function(tags) {
-  message("Preparing tag sheets for SOMNI db ingestion. Assuming standard Vemco/Innovasea tag sheets.")
+  message("Preparing tag sheets for SOMNI db ingestion. Assuming standard Vemco/Innovasea sales order tag sheets.")
   data(cols)
   stopifnot("Supplied tag sheet must be class 'data.frame' or 'tibble'." = (class(tags) %in% c("data.frame", "tibble")))
   tags <- janitor::clean_names(tags)
