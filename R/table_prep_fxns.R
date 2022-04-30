@@ -10,6 +10,7 @@
 #' @export
 #'
 #' @examples
+#' TagSheet <- read.csv("TagSheet.csv")
 #' prep_tag_sheet(TagSheet)
 prep_tag_sheet <- function(tags) {
   message("Preparing tag sheets for SOMNI db ingestion. Assuming standard Vemco/Innovasea tag sheets.")
