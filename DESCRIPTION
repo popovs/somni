@@ -13,3 +13,6 @@ RoxygenNote: 7.1.2
 Imports: 
     DBI (>= 1.1.2),
     RPostgres (>= 1.4.3)
+Depends: 
+    R (>= 2.10)
+LazyData: true
