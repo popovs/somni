@@ -18,5 +18,6 @@ performs simple data validation, selects necessary columns for SOMNI db,
 and ensures all columns are coerced to the correct data type.
 }
 \examples{
+TagSheet <- read.csv("TagSheet.csv")
 prep_tag_sheet(TagSheet)
 }
