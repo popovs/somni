@@ -4,10 +4,12 @@
 \alias{prep_otn_tagging}
 \title{Prepare OTN tagging metadata sheets for SOMNI db}
 \usage{
-prep_otn_tagging(dat)
+prep_otn_tagging(dat, db = db)
 }
 \arguments{
 \item{dat}{A dataframe containing OTN tagging metadata, including the template header with the OTN logo and instructions.}
+
+\item{db}{Name of database connection object in R workspace. Defaults to "db".}
 }
 \value{
 A list containing two dataframes, each corresponding to the respective table in SOMNI db: \code{metadata_animals} and \code{acoustic_animals}.
@@ -16,6 +18,13 @@ A list containing two dataframes, each corresponding to the respective table in 
 Prepare OTN tagging metadata sheets for SOMNI db
 }
 \examples{
+drv <- RPostgres::Postgres()
+db <- DBI::dbConnect(drv = drv,
+                     host = host,
+                     dbname = "somni",
+                     user = user,
+                     password = password)
+
 tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
-prep_otn_tagging(tm)
+prep_otn_tagging(tm, db = db)
 }

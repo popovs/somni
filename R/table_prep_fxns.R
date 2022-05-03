@@ -38,14 +38,22 @@ prep_tag_sheet <- function(tags) {
 #' Prepare OTN tagging metadata sheets for SOMNI db
 #'
 #' @param dat A dataframe containing OTN tagging metadata, including the template header with the OTN logo and instructions.
+#' @param db Name of database connection object in R workspace. Defaults to "db".
 #'
 #' @return A list containing two dataframes, each corresponding to the respective table in SOMNI db: `metadata_animals` and `acoustic_animals`.
 #' @export
 #'
 #' @examples
+#' drv <- RPostgres::Postgres()
+#' db <- DBI::dbConnect(drv = drv,
+#'                      host = host,
+#'                      dbname = "somni",
+#'                      user = user,
+#'                      password = password)
+#'
 #' tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
-#' prep_otn_tagging(tm)
-prep_otn_tagging <- function(dat) {
+#' prep_otn_tagging(tm, db = db)
+prep_otn_tagging <- function(dat, db = db) {
   # First check what data type it is. Some  people might
   # import full excel file w both tabs into R; others might
   # import the single tab into a single df. On error just
