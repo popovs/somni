@@ -195,11 +195,11 @@ prep_otn_tagging <- function(dat, db = db) {
     if (length(ft[["length_m"]][!is.na(ft$length_type == "STANDARD")]) > 0) ma[["standard_length"]][ft$length_type == "STANDARD"] <- ft[["length_m"]][ft$length_type == "STANDARD"]
     if (length(ft[["length_m"]][!is.na(ft$length_type == "TOTAL")]) > 0) ma[["total_length"]][ft$length_type == "TOTAL"] <- ft[["length_m"]][ft$length_type == "TOTAL"]
     if (length(ft[["length_m"]][!is.na(ft$length_type == "FORK")]) > 0) ma[["fork_length"]][ft$length_type == "FORK"] <- ft[["length_m"]][ft$length_type == "FORK"]
-    if (length(ft[["length_m"]][!is.na(ft$length_type %in% c("DISC", "DISC WIDTH", "WINGSPAN"))]) > 0) ma[["disc_width"]][ft$length_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")] <- ft[["length_m"]][ft$length_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")]
+    if (length(ft[["length_m"]][!is.na(ft$length_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN"))]) > 0) ma[["disc_width"]][ft$length_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN")] <- ft[["length_m"]][ft$length_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")]
     if (length(ft[["length2_m"]][!is.na(ft$length2_type == "STANDARD")]) > 0) ma[["standard_length"]][ft$length2_type == "STANDARD"] <- ft[["length2_m"]][ft$length2_type == "STANDARD"]
     if (length(ft[["length2_m"]][!is.na(ft$length2_type == "TOTAL")]) > 0) ma[["total_length"]][ft$length2_type == "TOTAL"] <- ft[["length2_m"]][ft$length2_type == "TOTAL"]
     if (length(ft[["length2_m"]][!is.na(ft$length2_type == "FORK")]) > 0) ma[["fork_length"]][ft$length2_type == "FORK"] <- ft[["length2_m"]][ft$length2_type == "FORK"]
-    if (length(ft[["length2_m"]][!is.na(ft$length2_type %in% c("DISC", "DISC WIDTH", "WINGSPAN"))]) > 0) ma[["disc_width"]][ft$length2_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")] <- ft[["length2_m"]][ft$length2_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")]
+    if (length(ft[["length2_m"]][!is.na(ft$length2_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN"))]) > 0) ma[["disc_width"]][ft$length2_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN")] <- ft[["length2_m"]][ft$length2_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")]
     ma$weight <- ft$weight_kg
     ma$sex <- ft$sex
     ma$age <- ft$age
