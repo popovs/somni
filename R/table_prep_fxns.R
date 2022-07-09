@@ -67,6 +67,7 @@ prep_otn_tagging <- function(dat, db = db) {
     stop("Supplied must be a dataframe of the standard OTN tagging data Excel template, including the first few rows containing the data sheet version number and OTN logo.")
   }
 
+  orig_n <- nrow(ft)
   ft[ft %in% c("NA", "")] <- NA
 
   # Prepare input data ----
@@ -100,7 +101,7 @@ prep_otn_tagging <- function(dat, db = db) {
   # Connect to db and query ----
   # At this point, need to connect to the db to fill in the tables.
   # Check if db is connected. If not, connect now.
-  if (!DBI::dbIsValid(db)) {
+  if (missing(db) | (!DBI::dbIsValid(db))) {
     # TO-DO: tryCatch series in case someone entered credentials incorrectly.
     drv <- RPostgres::Postgres()
     rstudioapi::showDialog("Connecting to database...", message = "You will now be prompted for your SOMNI db host, username, and password, so have those handy. This is used to run data validation and ensure the data you're processing right now will be compatible with the database.")
@@ -255,14 +256,14 @@ prep_otn_tagging <- function(dat, db = db) {
   }
 
   # Number of rows of original data, minus metadata rows, minus header row, minus sample data row (if present)
-  nrow_dat <- ifelse(s_yn, (nrow(dat) - nrow(meta) - 2), (nrow(dat) - nrow(meta) - 1))
+  nrow_dat <- ifelse(s_yn, (orig_n - nrow(meta) - 2), (orig_n - nrow(meta) - 1))
   message(nrow(ft), " records out of the original ", nrow_dat, " records were successfully prepared for SOMNI db import.
           ASSUMPTIONS:
           * Assuming no animals in this sheet were recaptured.
           * Assuming all timestamps in UTC.
           * Assuming all lengths in m.
           * Assuming all weights in kg.
-          * Assuming values present in the 'HARVEST_DATE' column is equivalent to capture date/time.
+          * Assuming values present in the 'HARVEST_DATE' column are equivalent to capture date/time.
           * FLOY tag columns left blank; FLOY tags will need to be manually added as the OTN sheet does not have a dedicated FLOY column.
           * ", length(sex_uncertain), " records had a ? in the sex column, therefore the phrase 'sex uncertain' was added to the comments column but the ? was removed. E.g., 'F?' becomes 'F', but with a note added to the comments column that the sex was uncertain.")
 
