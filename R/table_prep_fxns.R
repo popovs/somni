@@ -14,7 +14,7 @@
 #' prep_tag_sheet(TagSheet)
 prep_tag_sheet <- function(tags) {
   message("Preparing tag sheets for SOMNI db ingestion. Assuming standard Vemco/Innovasea sales order tag sheets.")
-  data(cols)
+  #data(cols)
   stopifnot("Supplied tag sheet must be class 'data.frame' or 'tibble'." = (class(tags) %in% c("data.frame", "tibble")))
   tags <- janitor::clean_names(tags)
   tags <- dplyr::select(tags, sales_order:ship_date)
@@ -25,7 +25,7 @@ prep_tag_sheet <- function(tags) {
   tags$date_updated <- as.POSIXct(tags$date_updated)
   names(tags) <- cols$metadata_acoustictags
   # Make sure col classes match db table data types
-  data(dt)
+  #data(dt)
   ct <- dt$metadata_acoustictags
   for (i in 1:length(ct)) {
     if (ct[[i]][1] != class(tags[[i]])[1]) {
@@ -101,7 +101,7 @@ prep_otn_tagging <- function(dat, db = db) {
   # Connect to db and query ----
   # At this point, need to connect to the db to fill in the tables.
   # Check if db is connected. If not, connect now.
-  if (missing(db) | (!DBI::dbIsValid(db))) {
+  if (missing(db)) {
     # TO-DO: tryCatch series in case someone entered credentials incorrectly.
     drv <- RPostgres::Postgres()
     rstudioapi::showDialog("Connecting to database...", message = "You will now be prompted for your SOMNI db host, username, and password, so have those handy. This is used to run data validation and ensure the data you're processing right now will be compatible with the database.")
@@ -144,7 +144,7 @@ prep_otn_tagging <- function(dat, db = db) {
   ft <- merge(ft, ids)
 
   # Create empty dfs with SOMNI fields to populate with OTN data
-  data(cols)
+  #data(cols)
   ma <- data.frame(matrix(ncol = length(cols$metadata_animals), nrow = nrow(ft)))
   names(ma) <- cols$metadata_animals
   aa <- data.frame(matrix(ncol = length(cols$acoustic_animals), nrow = nrow(ft)))
