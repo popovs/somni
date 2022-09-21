@@ -26,3 +26,10 @@ for (t in tbl) {
 dt <- dt[order(names(dt))] # put in alphabetical order
 
 usethis::use_data(dt, overwrite = TRUE)
+
+# Get full summary of tables + cols + requirements + data types
+db_tbls <- DBI::dbGetQuery(db, "select table_name, column_name, is_nullable, data_type
+from information_schema.columns
+where table_schema = 'somni' and is_updatable = 'YES'
+order by table_name, ordinal_position ;")
+usethis::use_data(db_tbls, overwrite = TRUE)
