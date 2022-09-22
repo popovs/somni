@@ -219,11 +219,11 @@ validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
       }
     }
 
-    # Tag vue_id and serial NOT in tag_list but vue_tag_id IS
+    # Tag serial and vue ID are both in database, but vue_tag_id is not
     if (nrow(aa[!(aa$tag_serial %in% bad_sns) & !(aa$vue_id %in% bad_vue) & aa$vue_tag_id %in% bad_vue_id,]) > 0) {
       bad_records <- aa[!(aa$tag_serial %in% bad_sns) & !(aa$vue_id %in% bad_vue) & aa$vue_tag_id %in% bad_vue_id,]
       for (i in 1:nrow(bad_records)) {
-        errors[nrow(errors)+1,] <- c("acoustic_animals", bad_records[i,"animal_tag"], "vue_tag_id", paste0("Full Vue tag ID ", bad_records[i,"vue_tag_id"], " not present in the ", tag_src, " but the tag_serial-vue_id combo exists. Tag code space is likely a typo. The function fill_tag_id() can fill in the full tag ID with the correct code space."))
+        errors[nrow(errors)+1,] <- c("acoustic_animals", bad_records[i,"animal_tag"], "vue_tag_id", paste0("Code space typo in ", bad_records[i,"vue_tag_id"], " but valid tag_serial-vue_id combo. The function fill_tag_id() can fill in the full tag ID with the correct code space."))
       }
     }
 
