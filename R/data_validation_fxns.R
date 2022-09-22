@@ -262,3 +262,64 @@ validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
   }
 
 }
+
+
+#' Fill in full Vue Tag ID
+#'
+#' @description If you have empty `vue_tag_id` values in your
+#' `acoustic_animals` dataframe, you can use `fill_tag_id` to
+#' find and populate `vue_tag_id` using the `vue_id` and
+#' `tag_serial` columns. Any existing `vue_tag_id` values are
+#' not modified.
+#'
+#' @details Each complete tag ID (e.g., 'A69-9001-3945') has a unique
+#' Vue ID and tag serial. Provided you have the Vue ID and serial
+#' number, in addition to the original tag purchase sheets, you
+#' can easily look up the complete tag ID.
+#'
+#' @param dat A dataframe of `acoustic_animals` data; typically from the output of `prep_otn_tagging`.
+#' @param tags A dataframe of `metadata_acoustictags` data that is not yet in the database to supplement tag lookups; typically the output of `prep_tag_sheet`.
+#' @param db Name of SOMNI database connection object in R workspace. Defaults to "db".
+#'
+#' @return A dataframe that matches the input `dat` dataframe, but with the `vue_tag_id` column populated.
+#' @export
+#'
+#' @examples
+#' tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
+#' prepped_otn <- prep_otn_tagging(tm, db = db)
+#' fill_tag_id(prepped_otn$acoustic_animals, db = db)
+fill_tag_id <- function(dat,
+                        tags = NA,
+                        db = db) {
+  aa <- dat
+  if (missing(tags) & missing(db)) stop("This function must be provided tag sheets or a database connection to function.")
+
+  # If db connection provided, pull all tag info
+  if (!missing(db)) {
+    tag_list <- DBI::dbGetQuery(db, "select serial_number, vue_tag_id from metadata_acoustictags;")
+    x <- sapply(tag_list$vue_tag_id, function(x) strsplit(sub("(-)(?=[^-]+$)", " ", x, perl = T), " ")[[1]], USE.NAMES = F)
+    tag_list$vue_id <- x[2,]
+  }
+
+  # If database connection was provided AND tags dataframe provided,
+  # merge the two vetting dataframes together
+  if (!missing(tags)) {
+    x <- sapply(tags$vue_tag_id, function(x) strsplit(sub("(-)(?=[^-]+$)", " ", x, perl = T), " ")[[1]], USE.NAMES = F)
+    tags$vue_id <- x[2,]
+    if (!missing(db)) {
+      tag_list <- rbind(tag_list, tags[,c("serial_number", "vue_tag_id", "vue_id")])
+    } else {
+      tag_list <- tags[,c("serial_number", "vue_tag_id", "vue_id")]
+    }
+  }
+
+  names(tag_list)[1] <- "tag_serial"
+
+  fill <- aa[["animal_tag"]][is.na(aa$vue_tag_id) & !is.na(aa$tag_serial) & !is.na(aa$vue_id)]
+
+  tag_ids <- merge(aa[aa$animal_tag %in% fill, c("animal_tag", "vue_id", "tag_serial")], tag_list, by = c("tag_serial", "vue_id"))
+
+  aa[["vue_tag_id"]][match(tag_ids$animal_tag, aa$animal_tag)] <- tag_ids$vue_tag_id
+  message("Updated ", nrow(tag_ids), " vue_tag_id records!")
+  return(aa)
+}
