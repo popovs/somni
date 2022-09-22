@@ -2,3 +2,4 @@
 
 export(prep_otn_tagging)
 export(prep_tag_sheet)
+export(validate_acoustic_animals)

@@ -9,7 +9,7 @@ prep_otn_tagging(dat, db = db)
 \arguments{
 \item{dat}{A dataframe containing OTN tagging metadata, including the template header with the OTN logo, template version number, and instructions.}
 
-\item{db}{Name of database connection object in R workspace. Defaults to "db".}
+\item{db}{Name of SOMNI database connection object in R workspace. Defaults to "db".}
 }
 \value{
 A list containing two dataframes, each corresponding to the respective table in SOMNI db: \code{metadata_animals} and \code{acoustic_animals}.
