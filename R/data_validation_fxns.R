@@ -237,7 +237,7 @@ validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
 
     # Tag serial and vue ID are both in database, but vue_tag_id is empty
     if (nrow(aa[is.na(aa$vue_tag_id) & !is.na(aa$vue_id) & !is.na(aa$tag_serial) & !(aa$tag_serial %in% bad_sns) & !(aa$vue_id %in% bad_vue),]) > 0) {
-      missing_full_tag_id <- aa[is.na(aa$vue_tag_id) & !is.na(aa$vue_id) & !is.na(aa$tag_serial),]
+      missing_full_tag_id <- aa[is.na(aa$vue_tag_id) & !is.na(aa$vue_id) & !is.na(aa$tag_serial) & !(aa$tag_serial %in% bad_sns) & !(aa$vue_id %in% bad_vue),]
       message(nrow(missing_full_tag_id), " record(s) have a valid vue_id and tag_serial, but not a full vue_tag_id (e.g. 'A69-9001-9285'). Running fill_tag_id() could help fill those in automatically.")
       bad_records <- missing_full_tag_id[["animal_tag"]]
       for (i in 1:length(bad_records)) {
