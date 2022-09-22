@@ -38,7 +38,7 @@ prep_tag_sheet <- function(tags) {
 #' Prepare OTN tagging metadata sheets for SOMNI db
 #'
 #' @param dat A dataframe containing OTN tagging metadata, including the template header with the OTN logo, template version number, and instructions.
-#' @param db Name of database connection object in R workspace. Defaults to "db".
+#' @param db Name of SOMNI database connection object in R workspace. Defaults to "db".
 #'
 #' @return A list containing two dataframes, each corresponding to the respective table in SOMNI db: `metadata_animals` and `acoustic_animals`.
 #' @export
