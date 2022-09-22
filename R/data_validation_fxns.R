@@ -207,7 +207,7 @@ validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
     if (nrow(aa[aa$tag_serial %in% bad_sns & !(aa$vue_id %in% bad_vue),]) > 0) {
       bad_records <- aa[aa$tag_serial %in% bad_sns & !(aa$vue_id %in% bad_vue),]
       for (i in 1:nrow(bad_records)) {
-        errors[nrow(errors)+1,] <- c("acoustic_animals", bad_records[i,"animal_tag"], "tag_serial", paste0("Tag serial ", bad_records[i,"tag_serial"], " not present in the ", tag_src, " but full vue_tag_id exists. Tag serial is likely a typo. The function find_tag_errors() can help resolve any typos."))
+        errors[nrow(errors)+1,] <- c("acoustic_animals", bad_records[i,"animal_tag"], "tag_serial", paste0("Tag serial ", bad_records[i,"tag_serial"], " is likely a typo. This tag is not present in the ", tag_src, " but full vue_tag_id exists. The function find_tag_errors() can help resolve any typos."))
       }
     }
 
