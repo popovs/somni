@@ -98,6 +98,9 @@ prep_otn_tagging <- function(dat, db = db) {
   # Set header names
   names(ft) <- ft_names
 
+  # Check if sheet has sat tags
+  has_sat <- any(grepl("satellite|satelite|sat", tolower(ft$tag_type)))
+
   # Connect to db and query ----
   # At this point, need to connect to the db to fill in the tables.
   # Check if db is connected. If not, connect now.
@@ -117,7 +120,16 @@ prep_otn_tagging <- function(dat, db = db) {
 
   # Pull relevant data from SOMNI db for building tables, e.g. primary keys.
   max_somni_id <- DBI::dbGetQuery(db, "select max(somni_id) from metadata_animals;")[[1]]
+    if (is.na(max_somni_id)) max_somni_id <- 99999
   max_animal_tag <- DBI::dbGetQuery(db, "select max(animal_tag) from acoustic_animals;")[[1]]
+    if (is.na(max_animal_tag)) max_animal_tag <- 0
+
+  if (has_sat) {
+    max_sat_sa <- DBI::dbGetQuery(db, "select max(animal_tag) from satellite_animals;")
+      if (is.na(max_sat_sa)) max_sat_sa <- 0
+    max_sat_ms <- DBI::dbGetQuery(db, "select max(sattag_pk) from metadata_sattags;")
+      if (is.na(max_sat_ms)) max_sat_ms <- 0
+  }
 
   # Species taxon IDs
   spp <- unique(ft$scientific_name)
@@ -147,9 +159,18 @@ prep_otn_tagging <- function(dat, db = db) {
   #data(cols)
   ma <- data.frame(matrix(ncol = length(cols$metadata_animals), nrow = nrow(ft)))
   names(ma) <- cols$metadata_animals
-  aa <- data.frame(matrix(ncol = length(cols$acoustic_animals), nrow = nrow(ft)))
-  names(aa) <- cols$acoustic_animals
-  # TO-DO: write function that coerces column types and call it here.
+
+  if (has_sat) {
+    aa <- data.frame(matrix(ncol = length(cols$acoustic_animals), nrow = length(grep("acoustic|vemco", tolower(ft$tag_type)))))
+    names(aa) <- cols$acoustic_animals
+    sa <- data.frame(matrix(ncol = length(cols$satellite_animals), nrow = length(grep("sat", tolower(ft$tag_type)))))
+    names(sa) <- cols$satellite_animals
+    ms <- data.frame(matrix(ncol = length(cols$metadata_sattags), nrow = nrow(sa)))
+    names(ms) <- cols$metadata_sattags
+  } else {
+    aa <- data.frame(matrix(ncol = length(cols$acoustic_animals), nrow = nrow(ft)))
+    names(aa) <- cols$acoustic_animals
+  }
 
   # Populate ma and aa ----
   # As column names may change across version numbers, this is
@@ -218,10 +239,24 @@ prep_otn_tagging <- function(dat, db = db) {
     ma$notes <- ft$comments
     ma$date_updated <- as.Date(ma$date_updated)
 
+    # Remove any duplicated rows (caused if one animal
+    # has multiple tags)
+    ma <- ma[!duplicated(ma), ]
+
+    # Split ft into acoustic & sat ----
+    # Split up ft into ft acoustic and ft satellite
+    # Now that ma is complete, split up ft row-wise by tag type
+    if (has_sat) {
+      ft_s <- ft[grep("sat", tolower(ft$tag_type)),]
+      ft <- ft[grep("acoustic", tolower(ft$tag_type)),]
+      }
+
     # Populate acoustic_animals aa ----
     # Next populate acoustic_animals.
+    # Functionally, 'ft' now only has acoustic data.
+    # If sat tag data is present, it is now in 'ft_s' (see above code)
     aa$animal_tag <- max_animal_tag + as.numeric(rownames(aa))
-    aa$somni_id <- ma$somni_id
+    aa$somni_id <- ft$somni_id
     aa$vue_id <- ft$tag_id_code
     aa$tag_serial <- ft$tag_serial_number
     aa$vue_tag_id <- paste0(stringr::word(ft$tag_code_space, sep = "-", start = 1, end = 2), "-", aa$vue_id)
@@ -253,11 +288,44 @@ prep_otn_tagging <- function(dat, db = db) {
     aa$date_updated <- as.Date(aa$date_updated)
     aa$recaptured <- FALSE
 
+    # Populate satellite tag data ----
+    if (has_sat) {
+      # Populate tag metadata first
+      ms$sattag_pk <- max_sat_ms + as.numeric(rownames(ms))
+      ms$program_number <- ft_s$tag_id_code
+      ms$sattag_sn <- ft_s$tag_serial_number
+      ms$sattag_model <- ft_s$tag_model
+      ms$sattag_brand <- ft_s$tag_manufacturer
+      ms$sattag_owner <- apply(cbind(ft_s$tag_owner_organization, ft_s$tag_owner_pi), 1,
+                               function(x) paste(x[!is.na(x)], collapse = ", "))
+      ms[["sattag_owner"]][ms$sattag_owner == ""] <- NA
+      ms$tag_life <- ft_s$est_tag_life
+      ms$activation_datetime <- ft_s$tag_activation_date
+      ms$activation_timezone <- 'UTC'
+
+      # Next populate satellite_animals sa
+      sa$animal_tag <- max_sat_sa + as.numeric(rownames(sa))
+      sa$somni_id <- ft_s$somni_id
+      sa$sattag_pk <- ms$sattag_pk
+      sa$attachment_method <- ft_s$tag_implant_type
+      sa$attachment_datetime <- ft_s$date_of_surgery
+      sa$attachment_timezone <- 'UTC'
+      sa$initialization_datetime <- ft_s$tag_activation_date
+      sa$initialization_timezone <- 'UTC'
+    }
+
   }
 
-  # Number of rows of original data, minus metadata rows, minus header row, minus sample data row (if present)
+  # Number of rows of original data, minus metadata rows,
+  # minus header row, minus sample data row (if present)
   nrow_dat <- ifelse(s_yn, (orig_n - nrow(meta) - 2), (orig_n - nrow(meta) - 1))
-  message(nrow(ft), " records out of the original ", nrow_dat, " records were successfully prepared for SOMNI db import.
+  nrow_final <- ifelse(has_sat, nrow(ft) + nrow(ft_s), nrow(ft))
+  message(nrow_final, " records out of the original ", nrow_dat, " records were successfully prepared for SOMNI db import. This includes:
+          * ", nrow(ma), " unique animal records (metadata_animals)
+          * ", nrow(aa), " acoustically tagged animals (acoustic_animals)
+          * ", ifelse(has_sat, nrow(sa), 0), " satellite tagged animals (satellite_animals + metadata_sattags).
+          As always, check that all your data looks correct after processing.
+
           ASSUMPTIONS:
           * Assuming no animals in this sheet were recaptured.
           * Assuming all timestamps in UTC.
@@ -267,9 +335,15 @@ prep_otn_tagging <- function(dat, db = db) {
           * FLOY tag columns left blank; FLOY tags will need to be manually added as the OTN sheet does not have a dedicated FLOY column.
           * ", length(sex_uncertain), " records had a ? in the sex column, therefore the phrase 'sex uncertain' was added to the comments column but the ? was removed. E.g., 'F?' becomes 'F', but with a note added to the comments column that the sex was uncertain.")
 
+  # TO-DO: write function that coerces column types and call it here.
+
   out <- list()
   out[["metadata_animals"]] <- ma
   out[["acoustic_animals"]] <- aa
+  if (has_sat) {
+    out[["metadata_sattags"]] <- ms
+    out[["satellite_animals"]] <- sa
+  }
   return(out)
 
 }
