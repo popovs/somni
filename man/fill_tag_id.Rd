@@ -4,7 +4,7 @@
 \alias{fill_tag_id}
 \title{Fill in full Vue Tag ID}
 \usage{
-fill_tag_id(dat, tags = NA, db = db)
+fill_tag_id(dat, tags = NA, db = db, overwrite = F)
 }
 \arguments{
 \item{dat}{A dataframe of \code{acoustic_animals} data; typically from the output of \code{prep_otn_tagging}.}
@@ -12,6 +12,8 @@ fill_tag_id(dat, tags = NA, db = db)
 \item{tags}{A dataframe of \code{metadata_acoustictags} data that is not yet in the database to supplement tag lookups; typically the output of \code{prep_tag_sheet}.}
 
 \item{db}{Name of SOMNI database connection object in R workspace. Defaults to "db".}
+
+\item{overwrite}{Should the vue_tag_id column be overwritten? By default, only NULL vue_tag_id records are updated. Change to \code{overwrite = TRUE} to update all tags in the vue_tag_id column.}
 }
 \value{
 A dataframe that matches the input \code{dat} dataframe, but with the \code{vue_tag_id} column populated.

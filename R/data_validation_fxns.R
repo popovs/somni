@@ -280,6 +280,7 @@ validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
 #' @param dat A dataframe of `acoustic_animals` data; typically from the output of `prep_otn_tagging`.
 #' @param tags A dataframe of `metadata_acoustictags` data that is not yet in the database to supplement tag lookups; typically the output of `prep_tag_sheet`.
 #' @param db Name of SOMNI database connection object in R workspace. Defaults to "db".
+#' @param overwrite Should the vue_tag_id column be overwritten? By default, only NULL vue_tag_id records are updated. Change to `overwrite = TRUE` to update all tags in the vue_tag_id column.
 #'
 #' @return A dataframe that matches the input `dat` dataframe, but with the `vue_tag_id` column populated.
 #' @export
@@ -290,7 +291,8 @@ validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
 #' fill_tag_id(prepped_otn$acoustic_animals, db = db)
 fill_tag_id <- function(dat,
                         tags = NA,
-                        db = db) {
+                        db = db,
+                        overwrite = F) {
   aa <- dat
   if (missing(tags) & missing(db)) stop("This function must be provided tag sheets or a database connection to function.")
 
@@ -315,7 +317,12 @@ fill_tag_id <- function(dat,
 
   names(tag_list)[1] <- "tag_serial"
 
-  fill <- aa[["animal_tag"]][is.na(aa$vue_tag_id) & !is.na(aa$tag_serial) & !is.na(aa$vue_id)]
+  if (overwrite) {
+    aa$vue_tag_id <- NA
+    fill <- aa[["animal_tag"]][!is.na(aa$tag_serial) & !is.na(aa$vue_id)]
+  } else {
+    fill <- aa[["animal_tag"]][is.na(aa$vue_tag_id) & !is.na(aa$tag_serial) & !is.na(aa$vue_id)]
+  }
 
   tag_ids <- merge(aa[aa$animal_tag %in% fill, c("animal_tag", "vue_id", "tag_serial")], tag_list, by = c("tag_serial", "vue_id"))
 
