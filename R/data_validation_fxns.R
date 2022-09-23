@@ -424,6 +424,8 @@ find_tag_errors <- function(dat,
 
   errors <- suppressWarnings(suppressMessages(validate_acoustic_animals(aa, tags = tags, db = db)))
 
+  if (is.null(errors)) return(message("All tags are valid!"))
+
   tmp <- stringr::str_c(errors$`Record ID`, collapse = ", ")
   tmp <- as.numeric(unlist(strsplit(tmp, ", ")))
   tmp <- sort(unique(tmp))
