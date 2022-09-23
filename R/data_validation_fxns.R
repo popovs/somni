@@ -330,3 +330,189 @@ fill_tag_id <- function(dat,
   message("Updated ", nrow(tag_ids), " vue_tag_id records!")
   return(aa)
 }
+
+
+#' Find tag typos and suggest fixes
+#'
+#' `find_tag_errors` will take your `acoustic_animals` dataframe,
+#' compare the serial number-tag ID combinations therein to the
+#' database and/or provided list of tag metadata, then run through
+#' a series of logic statements to find any mismatches between
+#' tag serial number and tag ID. It will then suggest the most
+#' likely fix for either serial number or ID.
+#'
+#' @details Every tag provided by Vemco/Innovasea has a unique
+#' serial number-tag ID combination, and that is used to find any errors
+#' in tag data. The function first runs a quick test to see if this combo
+#' is valid - if it is, the tag most likely was the correct tag in cases
+#' where the serial number was duplicated in `acoustic_animals`.
+#' Alternatively, if the combo is valid and no duplicates were in
+#' `acoustic_animals`, the code space (e.g. 'A69-9001') simply needed to be
+#' updated.
+#'
+#' Next, the function filters down to any remaining tags where the serial
+#' number-vue ID combo is invalid. In these cases, either the serial number
+#' or vue id (or both) are incorrect. The function then performs a table
+#' join on first the original serial number ('orig_sn'), then on the
+#' original vue ID ('orig_vid') and compares the results.
+#'
+#' If the serial number is correct, but the vue ID is not, the join returns
+#' a list of possible vue IDs ('possible_vid'). And vice versa, if the vue
+#' ID is correct, the function returns a list of possible serial numbers
+#' ('possible_sn').
+#'
+#' Finally, the possible combinations of new serial numbers and vue IDs are
+#' tested for validity. If the new serial number-vue ID combos are valid,
+#' the suggested combination is provided with a description of what was
+#' updated in the 'fix' column.
+#'
+#' The full output table includes the results of all these joins. It is
+#' organized as follows:
+#' * `record_id` indicates which `animal_tag` record is being
+#' tested from the original `acoustic_animals` dataframe.
+#' * `sn_vid` is a concatenation of the original serial number and vue id.
+#' * `valid_combo` indicates whether the `sn_vid` tag combination exists.
+#' * `orig_sn`, `orig_vid`, `orig_tag` stand for the original serial, vue ID, and full tag ID that were provided in the `acoustic_animals` dataset.
+#' * `matching_sn`, `possible_vid`, `matching_sn_tag` is tag data that was matched to the original tag based on the `orig_sn`.
+#' * `possible_sn`, `matching_vid`, `matching_vid_tag` is tag data that was matched to the original tag based on the `orig_vid`.
+#' * `suggested_sn`, `suggested_vid`, `suggested_tag` is the suggested tag data after testing that the serial-ID combination is valid.
+#' * `sn_vid_new` and `new_valid` are the new serial number-vue ID combination and validity of that combination with the suggested tag fixes.
+#' * `freq` indicates if any of the suggested tag fixes resulted in a duplicated tag.
+#' * `fix` Describes the suggested fix to the original tag data that needs to be made to fix any invalid tags.
+#'
+#' The truncated output only includes the `record_id`, original tag data,
+#' suggested tag fixes, and the `fix` column describing the fix.
+#'
+#' @param dat A dataframe of `acoustic_animals` data; typically from the output of `prep_otn_tagging`.
+#' @param tags A dataframe of `metadata_acoustictags` data that is not yet in the database to supplement tag lookups; typically the output of `prep_tag_sheet`.
+#' @param db Name of SOMNI database connection object in R workspace. Defaults to "db".
+#' @param full_output Boolean (T/F). Do you want to see the full output of the table joins between the provided data and the tags data?
+#'
+#' @return A dataframe containing original tag data and suggested fixes.
+#' @export
+#'
+#' @examples
+#' find_tag_errors(ft$acoustic_animals, tags = tags, db = db)
+find_tag_errors <- function(dat,
+                            tags = NA,
+                            db = db,
+                            full_output = F) {
+  if (missing(db) & missing(tags)) stop("This function needs either a list of tags or access to the database to function!")
+  if (missing(db)) warning("Tag error checking will be limited in scope without access to the full list of tags in the database!")
+  aa <- dat
+
+  # If db connection provided, pull all tag info
+  if (!missing(db)) {
+    tag_list <- DBI::dbGetQuery(db, "select serial_number, vue_tag_id from metadata_acoustictags;")
+    x <- sapply(tag_list$vue_tag_id, function(x) strsplit(sub("(-)(?=[^-]+$)", " ", x, perl = T), " ")[[1]], USE.NAMES = F)
+    tag_list$vue_id <- x[2,]
+  }
+
+  # If database connection was provided AND tags dataframe provided,
+  # merge the two vetting dataframes together
+  if (!missing(tags)) {
+    x <- sapply(tags$vue_tag_id, function(x) strsplit(sub("(-)(?=[^-]+$)", " ", x, perl = T), " ")[[1]], USE.NAMES = F)
+    tags$vue_id <- x[2,]
+    if (!missing(db)) {
+      tag_list <- rbind(tag_list, tags[,c("serial_number", "vue_tag_id", "vue_id")])
+    } else {
+      tag_list <- tags[,c("serial_number", "vue_tag_id", "vue_id")]
+    }
+  }
+
+  names(tag_list)[1] <- "tag_serial"
+
+  errors <- suppressWarnings(suppressMessages(validate_acoustic_animals(aa, tags = tags, db = db)))
+
+  tmp <- stringr::str_c(errors$`Record ID`, collapse = ", ")
+  tmp <- as.numeric(unlist(strsplit(tmp, ", ")))
+  tmp <- sort(unique(tmp))
+
+  out <- data.frame(matrix(nrow = length(tmp), ncol = 1, data = tmp, dimnames = list(NULL,"record_id")))
+  out <- merge(out, aa[,c("animal_tag", "vue_tag_id", "vue_id", "tag_serial")], by.x = "record_id", by.y = "animal_tag", all.x = T)
+  names(out) <- c("record_id", "orig_tag", "orig_vid", "orig_sn")
+  out$matching_vid <- out$orig_vid
+  out$matching_sn <- out$orig_sn
+  out <- merge(out, tag_list, by.x = "matching_vid", by.y = "vue_id", all.x = TRUE)
+  names(out)[grep("serial", names(out))] <- "possible_sn"
+  names(out)[grep("vue_tag_id", names(out))] <- "matching_vid_tag"
+  out <- merge(out, tag_list, by.x = "matching_sn", by.y = "tag_serial", all.x = TRUE)
+  names(out)[grep("vue_tag_id", names(out))] <- "matching_sn_tag"
+  names(out)[grep("vue_id", names(out))] <- "possible_vid"
+
+  out$sn_vid <- paste0(out$orig_sn, "-", out$orig_vid)
+  tag_list$sn_vid <- paste0(tag_list$tag_serial, "-", tag_list$vue_id)
+  out$valid_combo <- out$sn_vid %in% tag_list$sn_vid
+
+  out <- out %>% dplyr::select(record_id, sn_vid, valid_combo, orig_sn, orig_vid, orig_tag, matching_sn, possible_vid, matching_sn_tag, possible_sn, matching_vid, matching_vid_tag)
+
+  # Assume all valid sn-vid combo tags are either:
+  # 1) the correct duplicate out of dupe SN pairs
+  # or 2) need to get an updated code space
+  out[["suggested_sn"]][out$valid_combo == TRUE] <- out[["orig_sn"]][out$valid_combo == TRUE]
+  out[["suggested_vid"]][out$valid_combo == TRUE] <- out[["orig_vid"]][out$valid_combo == TRUE]
+  out[["suggested_tag"]][out$valid_combo == TRUE] <- out[["matching_sn_tag"]][out$valid_combo == TRUE]
+  out[["fix"]][out$valid_combo == TRUE] <- ifelse(out$orig_tag[out$valid_combo == TRUE] == out$suggested_tag[out$valid_combo == TRUE],
+                                                  "No fix; tag correct",
+                                                  "Update code space")
+
+  # IF sn-vid combo is FALSE, AND the possible_vid option is NA,
+  # => This indicates a bad orig_sn.
+  # However, in cases where orig_sn was duplicated,
+  # possible_vid won't be NA! The orig_sn is correct, just duplicated.
+  # => This indicates bad orig_sn with good orig_vid.
+  # So, we need sn_vid combo == FALSE,
+  # AND possible_vid == NA,
+  # OR simply sn_vid == FALSE & orig_vid == matching_vid
+  # To confidently suggest updating to possible_sn.
+  # Otherwise update to NA... unsure what it should be
+  out$suggested_sn[out$valid_combo == FALSE] <-
+    ifelse(is.na(out$possible_vid[out$valid_combo == FALSE])
+           & !is.na(out$possible_sn[out$valid_combo == FALSE])
+           | out$orig_vid[out$valid_combo == FALSE] == out$matching_vid[out$valid_combo == FALSE],
+           out$possible_sn[out$valid_combo == FALSE], # Update suggested_sn to possible_sn if criteria met
+           out$orig_sn[out$valid_combo == FALSE]) # Update suggested_sn to orig_sn if criteria not met
+
+  # Same ifelse test as above, but to update the suggested_vid column
+  out$suggested_vid[out$valid_combo == FALSE] <-
+    ifelse(is.na(out$possible_vid[out$valid_combo == FALSE])
+           & !is.na(out$possible_sn[out$valid_combo == FALSE])
+           | out$orig_vid[out$valid_combo == FALSE] == out$matching_vid[out$valid_combo == FALSE],
+           out$orig_vid[out$valid_combo == FALSE], # Update suggested_vid to orig_vid if criteria met
+           out$matching_vid[out$valid_combo == FALSE]) # Update suggested_vid to matching_vid if criteria not met
+
+  # Same ifelse test as above, but to update the suggested_tag column
+  out$suggested_tag[out$valid_combo == FALSE] <-
+    ifelse(is.na(out$possible_vid[out$valid_combo == FALSE])
+           & !is.na(out$possible_sn[out$valid_combo == FALSE])
+           | out$orig_vid[out$valid_combo == FALSE] == out$matching_vid[out$valid_combo == FALSE],
+           out$matching_vid_tag[out$valid_combo == FALSE], # Update suggested_tag to matching_vid_tag (because serial number was incorrect but vid was correct) if criteria met
+           out$matching_sn_tag[out$valid_combo == FALSE]) # Update suggested_vid to matching_sn_tag if criteria not met
+
+  # Same ifelse test as above, but to update the fix column
+  out$fix[out$valid_combo == FALSE] <-
+    ifelse(is.na(out$possible_vid[out$valid_combo == FALSE])
+           & !is.na(out$possible_sn[out$valid_combo == FALSE])
+           | out$orig_vid[out$valid_combo == FALSE] == out$matching_vid[out$valid_combo == FALSE],
+           "Update serial number", # Update fix column describing change
+           "Update vue ID") # Update fix to vue ID if criteria not met
+
+  # Now create a new sn-vid combo column to test if the fixes are valid
+  out$sn_vid_new <- paste0(out$suggested_sn, "-", out$suggested_vid)
+  out$new_valid <- out$sn_vid_new %in% tag_list$sn_vid
+
+  # Next check if any duplicates were created
+  out <- merge(out, plyr::count(out$sn_vid_new), by.x = "sn_vid_new", by.y = "x", all.x = TRUE)
+
+  # Update fix column for any tags that are no good
+  out[["fix"]][out$new_valid == FALSE] <- "Tag fix failed. Both serial and vue ID may be incorrect."
+  out[["fix"]][out$freq > 1] <- "Tag fix failed. Duplicate tags remaning. Both serial and vue ID may be incorrect."
+
+  out <- out %>% dplyr::select(record_id:suggested_tag, sn_vid_new, new_valid, freq, fix)
+
+  if (full_output == TRUE) {
+    return(out)
+  } else {
+    return(out[,c("record_id", "orig_sn", "orig_vid", "orig_tag", "suggested_sn", "suggested_vid", "suggested_tag", "fix")])
+  }
+}
