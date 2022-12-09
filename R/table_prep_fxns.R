@@ -347,3 +347,327 @@ prep_otn_tagging <- function(dat, db = db) {
   return(out)
 
 }
+
+
+# Prep OTN deployment (still under development)
+prep_otn_deployment <- function(dat, db = db) {
+  # First check what data type it is. Some  people might
+  # import full excel file w both tabs into R; others might
+  # import the single tab into a single df. On error just
+  # say to supply a single df since that's easier.
+  if (class(dat) == "data.frame") {
+    d <- dat
+  } else if (class(dat) == "list") {
+    message("Assuming 'Deployment' tab in the OTN data template contains the data.")
+    d <- dat[[grep("Deploy|deploy", names(dat))]]
+  } else {
+    stop("Supplied must be a dataframe of the standard OTN deployment data Excel template, including the first few rows containing the data sheet version number and OTN logo.")
+  }
+
+  orig_n <- nrow(d)
+  d[d %in% c("NA", "")] <- NA
+
+  # Prepare input data ----
+  # Pull out the first full row - the first row w complete cases
+  # is the header. Then clean up.
+  d_names <- d[complete.cases(d),]
+  if (nrow(d_names) > 1) d_names <- d_names[1,] # Select first row in case it also pulls out "Sample Data" row
+  d_names <- as.character(d_names)
+  d_names <- janitor::make_clean_names(d_names)
+
+  # Anything BEFORE the first complete row is the metadata for the OTN sheet
+  meta <- d[1:(grep(TRUE, complete.cases(d))-1),]
+  # Extract template version number (if it has it)
+  has_v <- length(which(grepl("Version|version", meta))) > 0
+  if (has_v) {
+    v <- meta[[which(grepl("Version|version", meta))]]
+    v <- v[grep("Version|version", v)]
+    v <- readr::parse_number(v)
+  }
+
+  # Extract data
+  d <- d[-(1:grep(TRUE, complete.cases(d))),]
+  # If "Sample Data" row still present, find and remove it
+  if (any(grepl("Sample Data", d))) {
+    s_yn <- TRUE
+    # Assuming "Sample Data" present in column 1
+    d <- d[-grep("Sample Data", d[[1]]),]
+  }
+
+  # Set header names
+  names(d) <- d_names
+
+  # Connect to db and query ----
+  # At this point, need to connect to the db to fill in the tables.
+  # Check if db is connected. If not, connect now.
+  if (missing(db)) {
+    # TO-DO: tryCatch series in case someone entered credentials incorrectly.
+    drv <- RPostgres::Postgres()
+    rstudioapi::showDialog("Connecting to database...", message = "You will now be prompted for your SOMNI db host, username, and password, so have those handy. This is used to run data validation and ensure the data you're processing right now will be compatible with the database.")
+    host = rstudioapi::showPrompt(title = "Host: ", message = "Host: ", default = "e.g., 123.225.99.456")
+    user = rstudioapi::showPrompt(title = "DB user", message = "DB user (default 'forager' for read-only access): ", default = "forager")
+    password = rstudioapi::askForPassword(prompt = "Password: ")
+    db <- DBI::dbConnect(drv = drv,
+                         host = host,
+                         dbname = "somni",
+                         user = user,
+                         password = password)
+  }
+
+  # Pull relevant data from SOMNI db for building tables, e.g. primary keys.
+  max_deploy_id <- DBI::dbGetQuery(db, "select max(deploy_id) from deployments_retrievals;")[[1]]
+  if (is.na(max_deploy_id)) max_deploy_id <- 0
+
+  stations_list <- DBI::dbGetQuery(db, "select station_id, \"array\", station_name, waterbody_name from metadata_stations;")
+  max_station_id <- max(stations_list$station_id)
+  if (is.na(max_station_id)) max_station_tag <- 99999
+
+  receivers_list <- DBI::dbGetQuery(db, "select receiver_sn from metadata_receivers;")
+  releases_list <- DBI::dbGetQuery(db, "select release_sn from metadata_releases;")
+
+  sensors_list <- DBI::dbGetQuery(db, "select sensor_id, sensor_sn from metadata_sensors;")
+  max_sensor_id <- max(sensors_list$sensor_id)
+  if (is.na(max_sensor_id)) max_sensor_id <- 99999
+
+  # List of all currently deployed gear in the deployments_retrievals table
+  db_deployed <- DBI::dbGetQuery(db, "select * from deployment_metadata where retrieval_status = 0;")
+  #db_deployed$station_gear <- paste0(db_deployed$station, db_deployed$release_sn, db_deployed$receiver_sn)
+  #db_deployed$rel_rec <- paste0(db_deployed$release_sn, db_deployed$receiver_sn)
+
+  # Match stations ----
+  if (nrow(d[is.na(d$station_no),]) > 0) warning("Some records in your deployment file are missing a station name. Those records will be ignored when processing the data. All deployments must be associated with a station name.")
+  d <- d[!is.na(d$station_no),]
+
+  # Merge station names
+  # Ideally merge on OTN array-station name combo
+  # 1) Split into two dfs: rows with array provided,
+  #    (d_array) and rows without array provided (d_sta)
+  # 2) Merge on array-station combo or just station
+  #    for the respective dfs
+  # 3) Combine the results back into one df ('d2')
+  # 4) If nrow(d) != nrow(d2), then there are
+  #    multiple stations with the same name, and that
+  #    needs to be resolved by the user.
+  # 5) Then for any stations that are not matched to
+  #    a station name, prompt user if they wish to make
+  #    new stations.
+  # Below fails.. returns same n of rows even if multiple matches
+  # ifelse(!is.na(d$otn_array) & !is.na(d$station_no),
+  #        as.numeric(merge(d, stations_list, by.x = c("otn_array", "station_no"), by.y = c("array", "station_name"), all.x = T)[["station_id"]]),
+  #        as.numeric(merge(d, stations_list, by.x = c("station_no"), by.y = c("station_name"), all.x = T)[["station_id"]])
+  #        )
+  # Split array vs. non-array rows, then merge
+  d_array <- d[!is.na(d$otn_array),]
+  d_sta <- d[is.na(d$otn_array),]
+
+  if (nrow(d_array) > 0) d_array <- merge(d_array, stations_list, by.x = c("otn_array", "station_no"), by.y = c("array", "station_name"), all.x = T)
+  if (nrow(d_sta) > 0) d_sta <- merge(d_sta, stations_list, by.x = c("station_no"), by.y = c("station_name"), all.x = T)
+
+  d2 <- rbind(d_array, d_sta)
+  rm(d_array)
+  rm(d_sta)
+
+  # Now compare rowcounts and deal with duplicate matches
+  while (nrow(d) != nrow(d2)) {
+    message("Some of your station names appear multiple times in the database. Would you like to interactively pick the correct station in the console?\n1 - Yes, let's choose the correct stations now\n2 - No, I'll modify the original dataset to include the array name and/or fix any typos I find and re-run prep_otn_deployment().")
+    choice <- readline(prompt = "Option (1 or 2): ")
+    while(!(choice %in% c(1,2))) {
+      cat("Sorry, didn't catch your previous response as a 1 or 2.")
+      choice <- readline(prompt = "Option (1 or 2): ")
+    }
+    if (choice == 2) {
+      stop("\rOk, exiting function now.")
+    } else {
+      # Pull out duplicated station rows
+      bad_sta <- plyr::count(d2$station_no)[plyr::count(d2$station_no)[2] > 1,]
+      message("You will now be prompted to choose the correct station for several stations. Just enter the number from the 'station_choice' column for the correct one.")
+      for (i in 1:nrow(bad_sta)) {
+        j <- stations_list[stations_list$station_name == bad_sta$x[i],]
+        row.names(j) <- NULL
+        j$station_choice <- row.names(j)
+        print(j[c("station_choice", "station_name", "array", "waterbody_name")])
+        corr <- readline(prompt = "Correct station: ")
+        while(!(corr %in% j$station_choice)) {
+          cat("Sorry, that was not a valid option. Choose the correct station and enter the corresponding number from the 'station_choice' column. \n\n")
+          print(j[c("station_choice", "station_name", "array", "waterbody_name")])
+          corr <- readline(prompt = "Correct station: ")
+        }
+        if (!exists("sta_fixes")) {
+          sta_fixes <- j[j$station_choice == corr, c("station_name", "station_id")]
+        } else {
+          sta_fixes <- rbind(sta_fixes, j[j$station_choice == corr, c("station_name", "station_id")])
+        }
+
+      }
+
+      # Now remove any rows from d2 where
+      # station_name IS IN but (and)
+      # station_id IS NOT IN sta_fixes!
+      d2 <- d2[!((d2$station_no %in% sta_fixes$station_name) & !(d2$station_id %in% sta_fixes$station_id)),]
+
+      # Since this is wrapped in 'while' loop, it will
+      # run through these fixes until the rowcount lines up.
+    }
+
+  } # end while(nrow(d2) != nrow(d))
+
+  d <- d2
+  rm(d2)
+
+  # New stations will be processed in the section "New stations" below
+
+  # Retrievals ----
+  # First, need to set previous years' deployments to 'retrieved'
+  # Since OTN doesn't use deploy_ids, need to match up to SOMNI
+  # deploy_id using a station-gear key
+  # First filter out any 'recovered' or 'lost' data
+  # TODO: This will fail if OTN updates the column names w/o adding version numbers to templates...
+  lost <- d[grep('l', d$recovered_y_n_l, ignore.case = T), c("ins_serial_no", "oceanographic_equipment_serial", "marine_mammal_hydrophone_serial", "ar_serial_no")]
+  retrievals <- d[grep('y', d$recovered_y_n_l, ignore.case = T), ]
+
+  if (nrow(lost) > 0) {
+    # TODO: Do some stuff (:sweatsmile:)
+  }
+
+  if (nrow(retrievals) > 0) {
+    # Logic behind this whole deal:
+    # 1) Make a list of gear that is successfully 'recovered' according to OTN datasheet (that's the 'retrievals' df above)
+    # 2) Pull list of all active deployments from database (db_deployed). Summarize into neat little 'deploy_list'
+    # 3) Check which serial numbers in 'deploy_list' also appear in the 'retrievals' list.
+    # 4) If it appears in the OTN sheet, mark 'deploy_list$otn_retrievals' as TRUE.
+    # 5) Now group otn_retrievals by deploy_id (extremely helpfully named 'x' df).
+    # 6) If both pieces of gear for a given deploy_id are TRUE in the otn_retrievals list, we can probably safely assume that deploy_id was successfully retrieved ('retrieve_success' list).
+    # 7) Then flag any deploy_ids where only half the gear was retrieved. Those are mistakes in some place or other.
+    deploy_list <- tidyr::pivot_longer(db_deployed[,c("deploy_id", "receiver_sn", "release_sn")],
+                                       cols = c("receiver_sn", "release_sn"),
+                                       names_to = "gear",
+                                       values_to = "serial",
+                                       values_drop_na = TRUE) %>%
+      as.data.frame()
+    deploy_list <- deploy_list[!duplicated(deploy_list),]
+
+    deploy_list$otn_retrieved <- deploy_list$serial %in% retrievals$ins_serial_no | deploy_list$serial %in% retrievals$ar_serial_no
+
+    x <- deploy_list %>% tidyr::pivot_wider(id_cols = "deploy_id",names_from = "gear", values_from = "otn_retrieved", values_fn = "sum")
+    x[is.na(x)] <- 0
+    x$sum <- x$receiver_sn + x$release_sn
+    x <- x[x$sum != 0,]
+
+    retrieve_success_id <- x[["deploy_id"]][x$sum == 2]
+    unretrieved_receiver_id <- x[["deploy_id"]][x$receiver_sn == 0]
+    unretrieved_release_id <- x[["deploy_id"]][x$release_sn == 0]
+
+    # I.e., this is the last known location of these receivers - need retrieval info!
+    # TODO: unretrieved_sensors
+    unretrieved_receiver <- db_deployed[db_deployed$deploy_id %in% unretrieved_receiver_id & !is.na(db_deployed$receiver_sn),]
+    unretrieved_release <- db_deployed[db_deployed$deploy_id %in% unretrieved_release_id & !is.na(db_deployed$release_sn),]
+
+  }
+
+  # New stations ----
+  # Extract new stations
+  ns.x <- d[is.na(d$station_id),]
+  if (any(tolower(ns.x$recovered_y_n_l) != "new")) message("These deployments aren't marked as 'new', but the stations don't match any existing stations in the database. Therefore assuming the following ", nrow(ns.x), " stations are new (in addition to any already marked as 'new'): ", paste(ns.x$station_no, collapse = " "))
+
+  # Create empty df to populate with new station metadata
+  ns <- setNames(data.frame(matrix(nrow = nrow(ns.x), ncol = length(cols$metadata_stations))), cols$metadata_stations)
+  ns$station_id <- max_station_id + as.numeric(row.names(ns))
+  ns$station_name <- ns.x$station_no
+  ns$date_established <- janitor::excel_numeric_to_date(as.numeric(ns.x$deploy_date_time_yyyy_mm_dd_thh_mm_ss))
+
+  rm(ns.x)
+
+  # New gear ----
+  # Create df with new releases
+  # VR2ARs are combo receiver-release, and are saved to the "metadata_receivers"
+  # table rather than to "metadata_releases"
+  n_rel.x <- d[d$ar_serial_no %!in% releases_list$release_sn & !is.na(d$ar_serial_no),]
+  n_rel.x <- n_rel.x[!grepl("VR2AR", n_rel.x$ar_model_no),]
+  if(nrow(n_rel.x) > 0) {
+    n_rel <- setNames(data.frame(matrix(nrow = nrow(n_rel.x), ncol = length(cols$metadata_releases))), cols$metadata_releases)
+    n_rel$release_sn <- n_rel.x$ar_serial_no
+    # TODO: make release brand/model smarter... at the moment
+    # I'm just taking the first word as "brand" and anything after that
+    # as "model"
+    n_rel$release_brand <- stringr::str_split(n_rel.x$ar_model_no, " ", 2, simplify = TRUE)[,1]
+    n_rel$release_model <- stringr::str_split(n_rel.x$ar_model_no, " ", 2, simplify = TRUE)[,2]
+    n_rel$release_health <- TRUE
+    n_rel[n_rel == ""] <- NA
+  }
+
+  rm(n_rel.x)
+
+  # Create df with new receivers
+  n_rec.x <- d[d$ins_serial_no %!in% receivers_list$receiver_sn & !is.na(d$ins_serial_no),]
+  if(nrow(n_rec.x) > 0) {
+    n_rec <- setNames(data.frame(matrix(nrow = nrow(n_rec.x), ncol = length(cols$metadata_receivers))), cols$metadata_receivers)
+    n_rec$receiver_sn <- n_rec.x$ins_serial_no
+    n_rec$receiver_model <- n_rec.x$ins_model_no
+    n_rec$receiver_health <- TRUE
+    n_rec$code_set <- n_rec.x$code_set
+    n_rec[n_rec == ""] <- NA
+  }
+
+  rm(n_rec.x)
+
+  # Create df with new sensors
+  # TODO: Update if OTN changes their ins column names
+  # TODO: Unsure what to do with 'transmitter' - probably
+  #       'deploy' it as a tag? To do later.
+  # TODO: make brand/model smarter - same issue as 'n_rel' above
+  n_sen.x <- setNames(d[d$oceanographic_equipment_serial %!in% sensors_list$sensor_sn & !is.na(d$oceanographic_equipment_serial), c("oceanographic_equipment_model", "oceanographic_equipment_serial")], c("model", "sn"))
+  n_sen.x <- rbind(n_sen.x, setNames(d[d$marine_mammal_hydrophone_serial %!in% sensors_list$sensor_sn & !is.na(d$marine_mammal_hydrophone_serial), c("marine_mammal_hydrophone_model", "marine_mammal_hydrophone_serial")], c("model", "sn")))
+  if(nrow(n_sen.x) > 0) {
+    n_sen <- setNames(data.frame(matrix(nrow = nrow(n_sen.x), ncol = length(cols$metadata_sensors))), cols$metadata_sensors)
+    n_sen$sensor_id <- max_sensor_id + as.numeric(row.names(n_sen))
+    n_sen$sensor_sn <- n_sen.x$sn
+    n_sen$sensor_brand <- stringr::str_split(n_sen.x$model, " ", 2, simplify = TRUE)[,1]
+    n_sen$sensor_model <- stringr::str_split(n_sen.x$model, " ", 2, simplify = TRUE)[,2]
+    n_sen$sensor_health <- TRUE
+    n_sen[n_sen == ""] <- NA
+  }
+
+  rm(n_sen.x)
+
+  # Deployments ---
+  # Finally, deploy the current year's gear
+
+  # Choose records where deployment actually happened, vs. lost ones
+  dd <- d[!is.na(d$deploy_date_time_yyyy_mm_dd_thh_mm_ss) & d$recovered_y_n_l %in% c("Y", "y", "new"),]
+
+  # Merge any sensor IDs to dd
+  # First combine sensors list w new sensors
+  if (exists("n_sen")) sensors_list <- rbind(sensors_list, n_sen[,c("sensor_id", "sensor_sn")])
+  # Now merge
+  dd <- merge(dd, sensors_list,
+              by.x = "oceanographic_equipment_serial",
+              by.y = "sensor_sn",
+              all.x = TRUE)
+  dd <- merge(dd, sensors_list,
+              by.x = "marine_mammal_hydrophone_serial",
+              by.y = "sensor_sn",
+              all.x = TRUE)
+
+  # Create deployments df
+
+  # Return dfs ----
+  # The following dfs are returned, where applicable:
+  # 1) Retrievals (retrieve success)
+  # 2) New stations
+  # 3) New releases
+  # 4) New receivers
+  # 5) New sensors
+  # 6) Deployment metadata
+  # 7) Deployed releases
+  # 8) Deployed receivers
+  # 9) Deployed sensors
+  # 10) Errors: unretrieved receivers, releases, and (TODO) sensors
+
+  retrieve_success_id
+  ns
+  n_rel
+  n_rec
+  n_sen
+
+}
+
