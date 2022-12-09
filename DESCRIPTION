@@ -15,6 +15,7 @@ Imports:
     dplyr (>= 1.0.7),
     janitor (>= 2.1.0),
     magrittr,
+    parzer,
     plyr (>= 1.8.7),
     readr (>= 2.1.0),
     RPostgres (>= 1.4.3),

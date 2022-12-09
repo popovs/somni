@@ -35,7 +35,7 @@ prep_tag_sheet <- function(tags) {
   return(tags)
 }
 
-#' Prepare OTN tagging metadata sheets for SOMNI db
+#' Prepare OTN tagging metadata sheet for SOMNI db
 #'
 #' @param dat A dataframe containing OTN tagging metadata, including the template header with the OTN logo, template version number, and instructions.
 #' @param db Name of SOMNI database connection object in R workspace. Defaults to "db".
@@ -205,7 +205,7 @@ prep_otn_tagging <- function(dat, db = db) {
     ma$capture_datetime <- janitor::excel_numeric_to_date(as.numeric(ft$harvest_date)) # TO-DO: make this line more robust if dates correctly imported?
     ma$capture_timezone <- 'UTC'
     ma$capture_location <- ft$capture_location
-    ma$capture_latitude <- as.numeric(ft$capture_latitude)
+    ma$capture_latitude <- as.numeric(ft$capture_latitude) # TODO: add parzer support
     ma$capture_longitude <- as.numeric(ft$capture_longitude)
     ma$capture_depth <- as.numeric(ft$capture_depth_m)
     ma$depth_unit <- 'm'
@@ -349,7 +349,15 @@ prep_otn_tagging <- function(dat, db = db) {
 }
 
 
-# Prep OTN deployment (still under development)
+
+#' Prepare OTN instrument metadata sheet for SOMNI db
+#'
+#' @inheritParams prep_otn_tagging
+#'
+#' @return A list containing up to 11 dataframes, either corresponding to their respective table in SOMNI db or containing errors that need to be fixed.
+#' @export
+#'
+#' @examples
 prep_otn_deployment <- function(dat, db = db) {
   # First check what data type it is. Some  people might
   # import full excel file w both tabs into R; others might
@@ -387,6 +395,7 @@ prep_otn_deployment <- function(dat, db = db) {
 
   # Extract data
   d <- d[-(1:grep(TRUE, complete.cases(d))),]
+  s_yn <- FALSE
   # If "Sample Data" row still present, find and remove it
   if (any(grepl("Sample Data", d))) {
     s_yn <- TRUE
@@ -570,10 +579,12 @@ prep_otn_deployment <- function(dat, db = db) {
   if (any(tolower(ns.x$recovered_y_n_l) != "new")) message("These deployments aren't marked as 'new', but the stations don't match any existing stations in the database. Therefore assuming the following ", nrow(ns.x), " stations are new (in addition to any already marked as 'new'): ", paste(ns.x$station_no, collapse = " "))
 
   # Create empty df to populate with new station metadata
-  ns <- setNames(data.frame(matrix(nrow = nrow(ns.x), ncol = length(cols$metadata_stations))), cols$metadata_stations)
-  ns$station_id <- max_station_id + as.numeric(row.names(ns))
-  ns$station_name <- ns.x$station_no
-  ns$date_established <- janitor::excel_numeric_to_date(as.numeric(ns.x$deploy_date_time_yyyy_mm_dd_thh_mm_ss))
+  if (nrow(ns.x) > 0) {
+    ns <- setNames(data.frame(matrix(nrow = nrow(ns.x), ncol = length(cols$metadata_stations))), cols$metadata_stations)
+    ns$station_id <- max_station_id + as.numeric(row.names(ns))
+    ns$station_name <- ns.x$station_no
+    ns$date_established <- janitor::excel_numeric_to_date(as.numeric(ns.x$deploy_date_time_yyyy_mm_dd_thh_mm_ss))
+  }
 
   rm(ns.x)
 
@@ -629,11 +640,23 @@ prep_otn_deployment <- function(dat, db = db) {
 
   rm(n_sen.x)
 
-  # Deployments ---
+  # Deployments ----
   # Finally, deploy the current year's gear
 
   # Choose records where deployment actually happened, vs. lost ones
   dd <- d[!is.na(d$deploy_date_time_yyyy_mm_dd_thh_mm_ss) & d$recovered_y_n_l %in% c("Y", "y", "new"),]
+  ddrow <- nrow(dd)
+
+  # Merge any new stations to dd
+  if (exists("ns")) {
+    dd <- merge(dd, ns[,c("station_name", "station_id")], by.x = "station_no", by.y = "station_name", all.x = TRUE)
+    dd$station_id <- ifelse(is.na(dd$station_id.x),
+                            as.numeric(dd$station_id.y), # R plays funky with Integer64 datatype, so converting to numeric
+                            as.numeric(dd$station_id.x))
+  }
+
+  if(any(is.na(dd$station_id))) warning("Some station_ids are NA.")
+  if(ddrow != nrow(dd)) warning("Merging new station_ids into dd resulted in extra records.")
 
   # Merge any sensor IDs to dd
   # First combine sensors list w new sensors
@@ -648,11 +671,66 @@ prep_otn_deployment <- function(dat, db = db) {
               by.y = "sensor_sn",
               all.x = TRUE)
 
+  if(ddrow != nrow(dd)) warning("Merging new sensor_ids into dd resulted in extra records.")
+
+  # Create deploy_id
+  # Needs to be done this way because sometimes one station will
+  # get tons of gear and have multiple rows per OTN sheet
+  deploy_ids <- as.data.frame(unique(dd$station_no))
+  names(deploy_ids) <- "station_no"
+  deploy_ids$deploy_id <- max_deploy_id + as.numeric(row.names(deploy_ids))
+  dd <- merge(dd, deploy_ids)
+  if(ddrow != nrow(dd)) warning("Merging new deploy_ids into dd resulted in extra records.")
+
   # Create deployments df
+  dr <- setNames(data.frame(matrix(nrow = nrow(dd), ncol = length(cols$deployments_retrievals))), cols$deployments_retrievals)
+  dr$deploy_id <- dd$deploy_id
+  dr$station_id <- dd$station_id
+  dr$deploy_datetime <- janitor::excel_numeric_to_date(as.numeric(dd$deploy_date_time_yyyy_mm_dd_thh_mm_ss), include_time = TRUE, tz = "UTC") # Assuming UTC
+  dr$deploy_timezone <- "UTC"
+  dr$deploy_latitude <- parzer::parse_lat(dd$deploy_lat)
+  dr$deploy_longitude <- parzer::parse_lon(dd$deploy_long)
+  dr$deploy_depth <- as.numeric(dd$bottom_depth)
+  dr$depth_unit <- "m"
+  dr$riser_length <- as.numeric(dd$riser_length)
+  dr$length_unit <- "m"
+  dr$instrument_depth <- dr$deploy_depth - dr$riser_length
+  dr$deployed_by <- dd$deployed_by_lead_technicians
+  dr$deploy_notes <- dd$comments
+  dr$retrieval_status <- 0
+  dr <- unique(dr) # TODO: Might not work if there's some deploy_ids where user just didn't enter e.g. depth for one record but did for another
+
+  if(any((plyr::count(dr$deploy_id)[,2]) > 1)) warning("Duplicate deploy_ids generated when extracting deployments-retrievals.")
+
+  # Deploy gear ----
+
+  # deployment_release
+  d_rel <- setNames(data.frame(matrix(nrow = nrow(dd), ncol = length(cols$deployment_release))), cols$deployment_release)
+  d_rel$deploy_id <- dd$deploy_id
+  d_rel$release_sn <- dd$ar_serial_no
+  d_rel$temp <- dd$ar_model_no
+  d_rel <- d_rel[!grepl("VR2AR", d_rel$temp),] # We exclude AR2ARs from release metadata
+  d_rel <- d_rel[,1:(length(d_rel) - 1)] # Get rid of temp column
+  d_rel <- d_rel[!is.na(d_rel$release_sn),]
+
+  # deployment_receiver
+  d_rec <- setNames(data.frame(matrix(nrow = nrow(dd), ncol = length(cols$deployment_receiver))), cols$deployment_receiver)
+  d_rec$deploy_id <- dd$deploy_id
+  d_rec$receiver_sn <- dd$ins_serial_no
+  d_rec <- d_rec[!is.na(d_rec$receiver_sn),]
+
+  # deployment_sensor
+  d_sen.x <- setNames(dd[,c("deploy_id", "sensor_id.x")], c("deploy_id", "sensor_id"))
+  d_sen.x <- rbind(d_sen.x, setNames(dd[,c("deploy_id", "sensor_id.y")], c("deploy_id", "sensor_id")))
+  d_sen.x <- d_sen.x[!is.na(d_sen.x$sensor_id),]
+  d_sen <- setNames(data.frame(matrix(nrow = nrow(d_sen.x), ncol = length(cols$deployment_sensor))), cols$deployment_sensor)
+  d_sen$deploy_id <- d_sen.x$deploy_id
+  d_sen$sensor_id <- d_sen.x$sensor_id
+  rm(d_sen.x)
 
   # Return dfs ----
   # The following dfs are returned, where applicable:
-  # 1) Retrievals (retrieve success)
+  # 1) Retrievals (retrieval success) TODO: add support for retrieval lat/long
   # 2) New stations
   # 3) New releases
   # 4) New receivers
@@ -663,11 +741,42 @@ prep_otn_deployment <- function(dat, db = db) {
   # 9) Deployed sensors
   # 10) Errors: unretrieved receivers, releases, and (TODO) sensors
 
-  retrieve_success_id
-  ns
-  n_rel
-  n_rec
-  n_sen
+  out <- list()
+  out$retrievals <- retrieve_success_id
+  if (exists("ns")) out$metadata_stations <- ns
+  if (exists("n_rel")) out$metadata_releases <- n_rel
+  if (exists("n_rec")) out$metadata_receivers <- n_rec
+  if (exists("n_sen")) out$metadata_sensors <- n_sen
+  out$deployments_retrievals <- dr
+  out$deployment_release <- d_rel
+  out$deployment_receiver <- d_rec
+  out$deployment_sensor <- d_sen
+  out$error_unretrieved_release <- unretrieved_release
+  out$error_unretrieved_receiver <- unretrieved_receiver
+
+  # Return message
+  # Number of rows of original data, minus metadata rows,
+  # minus header row, minus sample data row (if present)
+  nrow_dat <- ifelse(s_yn, (orig_n - nrow(meta) - 2), (orig_n - nrow(meta) - 1))
+  message(nrow(dr), " unique deployments out of ", nrow_dat, " records were successfully prepared for SOMNI db import. This includes:
+          * ", ifelse(exists("ns"), nrow(ns), 0), " new stations (metadata_stations)
+          * ", ifelse(exists("n_rel"), nrow(n_rel), 0), " new releases (metadata_releases)
+          * ", ifelse(exists("n_rec"), nrow(n_rec), 0), " new receivers (metadata_receivers)
+          * ", ifelse(exists("n_sen"), nrow(n_sen), 0), " new oceanographic + hydrophone sensors (metadata_sensors)
+
+    Out of ", nrow(dr), " new deployments, prep_otn_deployments detected:
+          * ", nrow(d_rel), " deployed releases (deployment_release; note VR2ARs are included in deployment_receiver)
+          * ", nrow(d_rec), " deployed receivers (deployment_receiver)
+          * ", nrow(d_sen), " deployed sensors (deployment_sensor)
+
+    Finally, some errors were detected. Certain pieces of gear are currently
+    still marked as 'deployed' in the database, with no retrieval information.
+    This includes ", nrow(unretrieved_release), " releases and ", nrow(unretrieved_receiver), " receivers.
+
+          ASSUMPTIONS:
+          * Assuming all timestamps in UTC.
+          * Assuming all depths/lengths in m.")
+
+  return(out)
 
 }
-

@@ -2,7 +2,7 @@
 % Please edit documentation in R/table_prep_fxns.R
 \name{prep_otn_tagging}
 \alias{prep_otn_tagging}
-\title{Prepare OTN tagging metadata sheets for SOMNI db}
+\title{Prepare OTN tagging metadata sheet for SOMNI db}
 \usage{
 prep_otn_tagging(dat, db = db)
 }
@@ -15,7 +15,7 @@ prep_otn_tagging(dat, db = db)
 A list containing two dataframes, each corresponding to the respective table in SOMNI db: \code{metadata_animals} and \code{acoustic_animals}.
 }
 \description{
-Prepare OTN tagging metadata sheets for SOMNI db
+Prepare OTN tagging metadata sheet for SOMNI db
 }
 \examples{
 drv <- RPostgres::Postgres()
