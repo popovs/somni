@@ -566,6 +566,13 @@ prep_otn_deployment <- function(dat, db = db) {
     unretrieved_receiver_id <- x[["deploy_id"]][x$receiver_sn == 0]
     unretrieved_release_id <- x[["deploy_id"]][x$release_sn == 0]
 
+    # Make retrievals output df
+    retrievals <- as.data.frame(retrieve_success_id)
+    names(retrievals) <- "deploy_id"
+    # For now, with this simple method, make retrieval datetime = lowest deployment datetime
+    retrievals$retrieval_datetime <- min(janitor::convert_to_datetime(d$deploy_date_time_yyyy_mm_dd_thh_mm_ss), na.rm = T)
+    retrievals$retrieval_timezone <- "UTC"
+
     # I.e., this is the last known location of these receivers - need retrieval info!
     # TODO: unretrieved_sensors
     unretrieved_receiver <- db_deployed[db_deployed$deploy_id %in% unretrieved_receiver_id & !is.na(db_deployed$receiver_sn),]
@@ -742,7 +749,7 @@ prep_otn_deployment <- function(dat, db = db) {
   # 10) Errors: unretrieved receivers, releases, and (TODO) sensors
 
   out <- list()
-  out$retrievals <- retrieve_success_id
+  out$retrievals <- retrievals
   if (exists("ns")) out$metadata_stations <- ns
   if (exists("n_rel")) out$metadata_releases <- n_rel
   if (exists("n_rec")) out$metadata_receivers <- n_rec
