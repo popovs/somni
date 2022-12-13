@@ -531,11 +531,14 @@ prep_otn_deployment <- function(dat, db = db) {
   # deploy_id using a station-gear key
   # First filter out any 'recovered' or 'lost' data
   # TODO: This will fail if OTN updates the column names w/o adding version numbers to templates...
-  lost <- d[grep('l', d$recovered_y_n_l, ignore.case = T), c("ins_serial_no", "oceanographic_equipment_serial", "marine_mammal_hydrophone_serial", "ar_serial_no")]
+  lost <- d[grep('l', d$recovered_y_n_l, ignore.case = T), c("station_id", "station_no", "ins_serial_no", "oceanographic_equipment_serial", "marine_mammal_hydrophone_serial", "ar_serial_no")]
   retrievals <- d[grep('y', d$recovered_y_n_l, ignore.case = T), ]
 
   if (nrow(lost) > 0) {
-    # TODO: Do some stuff (:sweatsmile:)
+    lost$station_id <- as.integer(lost$station_id)
+    retrieve_failure_id <- as.data.frame(unique(db_deployed[db_deployed$station_id %in% lost$station_id, "deploy_id"]))
+    names(retrieve_failure_id) <- "deploy_id"
+    retrieve_failure_id$retrieval_status <- 2
   }
 
   if (nrow(retrievals) > 0) {
@@ -569,6 +572,7 @@ prep_otn_deployment <- function(dat, db = db) {
     # Make retrievals output df
     retrievals <- as.data.frame(retrieve_success_id)
     names(retrievals) <- "deploy_id"
+    retrievals$retrieval_status <- 1
     # For now, with this simple method, make retrieval datetime = lowest deployment datetime
     retrievals$retrieval_datetime <- min(janitor::convert_to_datetime(d$deploy_date_time_yyyy_mm_dd_thh_mm_ss), na.rm = T)
     retrievals$retrieval_timezone <- "UTC"
@@ -578,6 +582,10 @@ prep_otn_deployment <- function(dat, db = db) {
     unretrieved_receiver <- db_deployed[db_deployed$deploy_id %in% unretrieved_receiver_id & !is.na(db_deployed$receiver_sn),]
     unretrieved_release <- db_deployed[db_deployed$deploy_id %in% unretrieved_release_id & !is.na(db_deployed$release_sn),]
 
+  }
+
+  if (exists("retrieve_failure_id") & exists("retrievals")) {
+    retrievals <- dplyr::bind_rows(retrieve_failure_id, retrievals)
   }
 
   # New stations ----
