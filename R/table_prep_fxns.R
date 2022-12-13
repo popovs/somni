@@ -769,17 +769,21 @@ prep_otn_deployment <- function(dat, db = db) {
   out$error_unretrieved_release <- unretrieved_release
   out$error_unretrieved_receiver <- unretrieved_receiver
 
-  # Return message
+  # Return message ----
   # Number of rows of original data, minus metadata rows,
   # minus header row, minus sample data row (if present)
   nrow_dat <- ifelse(s_yn, (orig_n - nrow(meta) - 2), (orig_n - nrow(meta) - 1))
-  message(nrow(dr), " unique deployments out of ", nrow_dat, " records were successfully prepared for SOMNI db import. This includes:
-          * ", ifelse(exists("ns"), nrow(ns), 0), " new stations (metadata_stations)
+  message(nrow(retrievals), " station retrievals and ", nrow(dr), " new deployments out of ", nrow_dat, " records were successfully prepared for SOMNI db import. This includes:
+          * ", ifelse(exists("retrieve_failure_id"), nrow(retrieve_failure_id), 0), " lost stations
+          * ", ifelse(exists("retrieve_success_id"), length(retrieve_success_id), 0), " successfully retrieved stations
+          * ", ifelse(exists("ns"), nrow(ns), 0), " newly created stations (metadata_stations)
+
+    New pieces of gear detected includes:
           * ", ifelse(exists("n_rel"), nrow(n_rel), 0), " new releases (metadata_releases)
           * ", ifelse(exists("n_rec"), nrow(n_rec), 0), " new receivers (metadata_receivers)
           * ", ifelse(exists("n_sen"), nrow(n_sen), 0), " new oceanographic + hydrophone sensors (metadata_sensors)
 
-    Out of ", nrow(dr), " new deployments, prep_otn_deployments detected:
+    Total deployed gear includes:
           * ", nrow(d_rel), " deployed releases (deployment_release; note VR2ARs are included in deployment_receiver)
           * ", nrow(d_rec), " deployed receivers (deployment_receiver)
           * ", nrow(d_sen), " deployed sensors (deployment_sensor)
