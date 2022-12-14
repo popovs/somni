@@ -525,67 +525,47 @@ prep_otn_deployment <- function(dat, db = db) {
 
   # New stations will be processed in the section "New stations" below
 
-  # Retrievals ----
+  # Retrievals + Lost ----
   # First, need to set previous years' deployments to 'retrieved'
   # Since OTN doesn't use deploy_ids, need to match up to SOMNI
-  # deploy_id using a station-gear key
+  # deploy_id using a station-gear key (jk, not doing this - because Hussey lab fills out OTN form chaotically)
   # First filter out any 'recovered' or 'lost' data
   # TODO: This will fail if OTN updates the column names w/o adding version numbers to templates...
-  lost <- d[grep('l', d$recovered_y_n_l, ignore.case = T), c("station_id", "station_no", "ins_serial_no", "oceanographic_equipment_serial", "marine_mammal_hydrophone_serial", "ar_serial_no")]
-  retrievals <- d[grep('y', d$recovered_y_n_l, ignore.case = T), ]
+  lost0 <- d[grep('l', d$recovered_y_n_l, ignore.case = T), ]
+  retrievals0 <- d[grep('y', d$recovered_y_n_l, ignore.case = T), ]
 
-  if (nrow(lost) > 0) {
-    lost$station_id <- as.integer(lost$station_id)
-    retrieve_failure_id <- as.data.frame(unique(db_deployed[db_deployed$station_id %in% lost$station_id, "deploy_id"]))
-    names(retrieve_failure_id) <- "deploy_id"
-    retrieve_failure_id$retrieval_status <- 2
+  if (nrow(lost0) > 0) {
+    lost0$station_id <- as.integer(lost0$station_id)
+    lost <- as.data.frame(unique(db_deployed[db_deployed$station_id %in% lost0$station_id, "deploy_id"]))
+    names(lost) <- "deploy_id"
+    lost$retrieval_status <- 2
   }
 
-  if (nrow(retrievals) > 0) {
-    # Logic behind this whole deal:
-    # 1) Make a list of gear that is successfully 'recovered' according to OTN datasheet (that's the 'retrievals' df above)
-    # 2) Pull list of all active deployments from database (db_deployed). Summarize into neat little 'deploy_list'
-    # 3) Check which serial numbers in 'deploy_list' also appear in the 'retrievals' list.
-    # 4) If it appears in the OTN sheet, mark 'deploy_list$otn_retrievals' as TRUE.
-    # 5) Now group otn_retrievals by deploy_id (extremely helpfully named 'x' df).
-    # 6) If both pieces of gear for a given deploy_id are TRUE in the otn_retrievals list, we can probably safely assume that deploy_id was successfully retrieved ('retrieve_success' list).
-    # 7) Then flag any deploy_ids where only half the gear was retrieved. Those are mistakes in some place or other.
-    deploy_list <- tidyr::pivot_longer(db_deployed[,c("deploy_id", "receiver_sn", "release_sn")],
-                                       cols = c("receiver_sn", "release_sn"),
-                                       names_to = "gear",
-                                       values_to = "serial",
-                                       values_drop_na = TRUE) %>%
-      as.data.frame()
-    deploy_list <- deploy_list[!duplicated(deploy_list),]
-
-    deploy_list$otn_retrieved <- deploy_list$serial %in% retrievals$ins_serial_no | deploy_list$serial %in% retrievals$ar_serial_no
-
-    x <- deploy_list %>% tidyr::pivot_wider(id_cols = "deploy_id",names_from = "gear", values_from = "otn_retrieved", values_fn = "sum")
-    x[is.na(x)] <- 0
-    x$sum <- x$receiver_sn + x$release_sn
-    x <- x[x$sum != 0,]
-
-    retrieve_success_id <- x[["deploy_id"]][x$sum == 2]
-    unretrieved_receiver_id <- x[["deploy_id"]][x$receiver_sn == 0]
-    unretrieved_release_id <- x[["deploy_id"]][x$release_sn == 0]
+  if (nrow(retrievals0) > 0) {
+    retrievals0$station_id <- as.integer(retrievals0$station_id)
+    retrieve_success_id <- as.data.frame(unique(db_deployed[db_deployed$station_id %in% retrievals0$station_id, c("deploy_id", "station_id")]))
+    retrievals0 <- merge(retrievals0, retrieve_success_id, by = "station_id")
 
     # Make retrievals output df
-    retrievals <- as.data.frame(retrieve_success_id)
+    retrievals <- as.data.frame(retrievals0$deploy_id)
     names(retrievals) <- "deploy_id"
     retrievals$retrieval_status <- 1
-    # For now, with this simple method, make retrieval datetime = lowest deployment datetime
-    retrievals$retrieval_datetime <- min(janitor::convert_to_datetime(d$deploy_date_time_yyyy_mm_dd_thh_mm_ss), na.rm = T)
+    retrievals$retrieval_datetime <- janitor::convert_to_datetime(retrievals0$recover_date_time_yyyy_mm_dd_thh_mm_ss)
     retrievals$retrieval_timezone <- "UTC"
+    retrievals$retrieval_latitude <- suppressWarnings(parzer::parse_lat(retrievals0$recover_lat_dd_ddddd))
+    retrievals$retrieval_longitude <- suppressWarnings(parzer::parse_lon(retrievals0$recover_long_ddd_ddddd))
+    retrievals$retrieved_by <- retrievals0$deployed_by_lead_technicians
 
     # I.e., this is the last known location of these receivers - need retrieval info!
     # TODO: unretrieved_sensors
-    unretrieved_receiver <- db_deployed[db_deployed$deploy_id %in% unretrieved_receiver_id & !is.na(db_deployed$receiver_sn),]
-    unretrieved_release <- db_deployed[db_deployed$deploy_id %in% unretrieved_release_id & !is.na(db_deployed$release_sn),]
+    unretrieved <- db_deployed[db_deployed$deploy_id %!in% retrievals$deploy_id,]
+    unretrieved_receiver <- unretrieved[unretrieved$receiver_sn %in% d$ins_serial_no & !is.na(unretrieved$receiver_sn),]
+    unretrieved_release <- unretrieved[unretrieved$release_sn %in% d$ar_serial_no & !is.na(unretrieved$release_sn),]
 
   }
 
-  if (exists("retrieve_failure_id") & exists("retrievals")) {
-    retrievals <- dplyr::bind_rows(retrieve_failure_id, retrievals)
+  if ((nrow(lost0) + nrow(retrievals0)) > 2) {
+    retrievals <- dplyr::bind_rows(lost, retrievals)
   }
 
   # New stations ----
@@ -774,8 +754,8 @@ prep_otn_deployment <- function(dat, db = db) {
   # minus header row, minus sample data row (if present)
   nrow_dat <- ifelse(s_yn, (orig_n - nrow(meta) - 2), (orig_n - nrow(meta) - 1))
   message(nrow(retrievals), " station retrievals and ", nrow(dr), " new deployments out of ", nrow_dat, " records were successfully prepared for SOMNI db import. This includes:
-          * ", ifelse(exists("retrieve_failure_id"), nrow(retrieve_failure_id), 0), " lost stations
-          * ", ifelse(exists("retrieve_success_id"), length(retrieve_success_id), 0), " successfully retrieved stations
+          * ", ifelse(exists("lost0"), nrow(lost0), 0), " lost stations
+          * ", ifelse(exists("retrievals0"), nrow(retrievals0), 0), " successfully retrieved stations
           * ", ifelse(exists("ns"), nrow(ns), 0), " newly created stations (metadata_stations)
 
     New pieces of gear detected includes:
