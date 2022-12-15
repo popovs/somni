@@ -518,3 +518,49 @@ find_tag_errors <- function(dat,
     return(out[,c("record_id", "orig_sn", "orig_vid", "orig_tag", "suggested_sn", "suggested_vid", "suggested_tag", "fix")])
   }
 }
+
+
+#' Validate data for database import
+#'
+#' This function takes a supplied dataframe and a database table
+#' to check that:
+#' 1) the column names of the dataframe match the column names of the database table
+#' 2) all non-NULL columns have no NULL values
+#' 3) all column data types of the dataframe match the column data types of the database table
+#'
+#' @param dat A dataframe containing data to be appended to a SOMNI db table.
+#' @param tbl The name of a SOMNI db table (e.g., "metadata_acoustictags" or "deployments_retrievals").
+#'
+#' @return Warnings if any validation checks fail
+#' @export
+#'
+#' @examples
+#' tags <- prep_tag_sheet(raw_tag_dat)
+#' validate_table(tags, "metadata_acoustictags")
+#'
+#' otn_tagging <- prep_otn_tagging(raw_otn_data)
+#' validate_table(otn_tagging$metadata_animals, "metadata_animals")
+validate_table <- function(dat, tbl) {
+  # Check colnames match
+  if (any(names(dat) != names(dt[[tbl]]))) warning("Column names in `dat` don't match column names in the database table `", tbl, "`.")
+
+  # Check all required columns are not null
+  non_nulls <- db_tbls[db_tbls$table_name == tbl & db_tbls$is_nullable == "NO",]
+  for (i in non_nulls$column_name) {
+    if (any(is.na(dat[[i]]))) {
+      warning("Column ", i, " has null values. This column is not allowed to have null values in the database.")
+    }
+  }
+
+  # Check dat coltypes match db coltypes
+  coltypes <- unlist(dt[[tbl]], use.names = F)
+  coltypes <- coltypes[coltypes != "POSIXt"] # Drop POSIXt
+  coltypes[grep("geography", coltypes)] <- "character" # postgres geog columns will be eval'd as character
+  coltypes[grep("integer64", coltypes)] <- "integer" # postgres integer64 columns will be eval'd as integer
+
+  dat2 <- as.data.frame(Map(function(x, y) get(y)(x),
+                             dat,
+                             paste0("as.", coltypes)))
+
+  if (!(any(dt[[tbl]] %in% sapply(dat2, class)))) warning("Some column types in `dat` don't match the column types of the database table `", tbl, "` in the database. See `data(dt)` to check column types in each db table.")
+}
