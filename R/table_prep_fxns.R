@@ -129,9 +129,9 @@ prep_otn_tagging <- function(dat, db = db) {
     if (is.na(max_animal_tag)) max_animal_tag <- 0
 
   if (has_sat) {
-    max_sat_sa <- DBI::dbGetQuery(db, "select max(animal_tag) from satellite_animals;")
+    max_sat_sa <- DBI::dbGetQuery(db, "select max(animal_tag) from satellite_animals;")[[1]]
       if (is.na(max_sat_sa)) max_sat_sa <- 0
-    max_sat_ms <- DBI::dbGetQuery(db, "select max(sattag_pk) from metadata_sattags;")
+    max_sat_ms <- DBI::dbGetQuery(db, "select max(sattag_pk) from metadata_sattags;")[[1]]
       if (is.na(max_sat_ms)) max_sat_ms <- 0
   }
 
@@ -176,6 +176,18 @@ prep_otn_tagging <- function(dat, db = db) {
     names(aa) <- cols$acoustic_animals
   }
 
+  # Clean up dates ----
+  ft[,ft_names[grep("date", ft_names)]] <-
+    as.data.frame(
+      lapply(ft[,ft_names[grep("date", ft_names)]],
+                         function(x) {
+                           if (class(x) == "character") {
+                             janitor::convert_to_datetime(x)
+                             } else {
+                             janitor::excel_numeric_to_date(x)
+                             }
+                         }))
+
   # Populate ma and aa ----
   # As column names may change across version numbers, this is
   # where to check for which version we're on to translate OTN
@@ -208,11 +220,11 @@ prep_otn_tagging <- function(dat, db = db) {
   ma$fieldbook_id <- ft$animal_id
   ma$species_id <- ft$taxon_key
   ma$recaptured <- FALSE
-  ma$capture_datetime <- janitor::excel_numeric_to_date(as.numeric(ft$harvest_date)) # TO-DO: make this line more robust if dates correctly imported?
+  ma$capture_datetime <- ft$harvest_date
   ma$capture_timezone <- 'UTC'
   ma$capture_location <- ft$capture_location
-  ma$capture_latitude <- as.numeric(ft$capture_latitude) # TODO: add parzer support
-  ma$capture_longitude <- as.numeric(ft$capture_longitude)
+  ma$capture_latitude <- suppressWarnings(parzer::parse_lat(ft$capture_latitude))
+  ma$capture_longitude <- suppressWarnings(parzer::parse_lon(ft$capture_longitude))
   ma$capture_depth <- as.numeric(ft$capture_depth_m)
   ma$depth_unit <- 'm'
   ma$dead_sample <- FALSE
@@ -236,12 +248,12 @@ prep_otn_tagging <- function(dat, db = db) {
                              0, 1)
   ma$stock <- ft$stock
   ma$finclips_dna <- ft$dna_sample_taken
-  ma$release_datetime <- janitor::excel_numeric_to_date(as.numeric(ft$utc_release_date_time), include_time = T, tz = "UTC") # TO-DO: make this line more robust if dates correctly imported?
+  ma$release_datetime <- ft$utc_release_date_time
   ma$release_timezone <- 'UTC'
   ma$release_location <- ft$release_location
   ma$release_group <- ft$release_group
-  ma$release_latitude <- as.numeric(ft$release_latitude)
-  ma$release_longitude <- as.numeric(ft$release_longitude)
+  ma$release_latitude <- suppressWarnings(parzer::parse_lat(ft$release_latitude))
+  ma$release_longitude <- suppressWarnings(parzer::parse_lon(ft$release_longitude))
   ma$notes <- ft$comments
   ma$date_updated <- as.Date(ma$date_updated)
 
@@ -267,6 +279,7 @@ prep_otn_tagging <- function(dat, db = db) {
   aa$tag_serial <- ft$tag_serial_number
   aa$vue_tag_id <- paste0(stringr::word(ft$tag_code_space, sep = "-", start = 1, end = 2), "-", aa$vue_id)
   aa$vue_tag_id <- ifelse(toupper(ft$tag_type) == "ACOUSTIC", aa$vue_tag_id, NA)
+  aa$activation_datetime <- ft$tag_activation_date
   aa$activation_timezone <- 'UTC'
   aa$implant_type <- ft$tag_implant_type
   aa$implant_method <- ft$tag_implant_method
@@ -280,8 +293,8 @@ prep_otn_tagging <- function(dat, db = db) {
   aa$surgery_datetime <- as.Date(ft$date_of_surgery)
   aa$surgery_timezone <- 'UTC'
   aa$surgery_location <- ft$surgery_location
-  aa$surgery_latitude <- as.numeric(ft$surgery_latitude)
-  aa$surgery_longitude <- as.numeric(ft$surgery_longitude)
+  aa$surgery_latitude <- suppressWarnings(parzer::parse_lat(ft$surgery_latitude))
+  aa$surgery_longitude <- suppressWarnings(parzer::parse_lon(ft$surgery_longitude))
   aa$sedative <- ft$sedative
   aa$sedative_ppm <- ft$sedative_concentration_ppm
   aa$anesthetic <- ft$anaesthetic
