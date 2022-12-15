@@ -10,8 +10,10 @@
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' TagSheet <- read.csv("TagSheet.csv")
 #' prep_tag_sheet(TagSheet)
+#' }
 prep_tag_sheet <- function(tags) {
   message("Preparing tag sheets for SOMNI db ingestion. Assuming standard Vemco/Innovasea sales order tag sheets.")
   #data(cols)
@@ -44,6 +46,7 @@ prep_tag_sheet <- function(tags) {
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' drv <- RPostgres::Postgres()
 #' db <- DBI::dbConnect(drv = drv,
 #'                      host = host,
@@ -53,6 +56,7 @@ prep_tag_sheet <- function(tags) {
 #'
 #' tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
 #' prep_otn_tagging(tm, db = db)
+#' }
 prep_otn_tagging <- function(dat, db = db) {
   # First check what data type it is. Some  people might
   # import full excel file w both tabs into R; others might
@@ -352,12 +356,24 @@ prep_otn_tagging <- function(dat, db = db) {
 
 #' Prepare OTN instrument metadata sheet for SOMNI db
 #'
-#' @inheritParams prep_otn_tagging
+#' @param dat A dataframe containing OTN deployment metadata, including the template header with the OTN logo, template version number, and instructions.
+#' @param db Name of SOMNI database connection object in R workspace. Defaults to "db".
 #'
 #' @return A list containing up to 11 dataframes, either corresponding to their respective table in SOMNI db or containing errors that need to be fixed.
 #' @export
 #'
 #' @examples
+#' \dontrun{
+#' drv <- RPostgres::Postgres()
+#' db <- DBI::dbConnect(drv = drv,
+#'                      host = host,
+#'                      dbname = "somni",
+#'                      user = user,
+#'                      password = password)
+#'
+#' dm <- readxl::read_excel("OTN_deployments.xslx", sheet = "Deployment")
+#' prep_otn_deployment(dm, db = db)
+#' }
 prep_otn_deployment <- function(dat, db = db) {
   # First check what data type it is. Some  people might
   # import full excel file w both tabs into R; others might
@@ -578,6 +594,7 @@ prep_otn_deployment <- function(dat, db = db) {
     ns <- setNames(data.frame(matrix(nrow = nrow(ns.x), ncol = length(cols$metadata_stations))), cols$metadata_stations)
     ns$station_id <- max_station_id + as.numeric(row.names(ns))
     ns$station_name <- ns.x$station_no
+    ns$station_retired <- FALSE
     ns$date_established <- janitor::excel_numeric_to_date(as.numeric(ns.x$deploy_date_time_yyyy_mm_dd_thh_mm_ss))
   }
 

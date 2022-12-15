@@ -45,9 +45,11 @@
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
 #' prepped_otn <- prep_otn_tagging(tm, db = db)
 #' validate_acoustic_animals(prepped_otn$acoustic_animals)
+#' }
 validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
                                  tags = NA, # optional - dataframe containing tags that haven't been uploaded to db yet
                                  db = db) {
@@ -286,9 +288,11 @@ validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
 #' prepped_otn <- prep_otn_tagging(tm, db = db)
 #' fill_tag_id(prepped_otn$acoustic_animals, db = db)
+#' }
 fill_tag_id <- function(dat,
                         tags = NA,
                         db = db,
@@ -392,7 +396,9 @@ fill_tag_id <- function(dat,
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' find_tag_errors(ft$acoustic_animals, tags = tags, db = db)
+#' }
 find_tag_errors <- function(dat,
                             tags = NA,
                             db = db,
@@ -535,11 +541,13 @@ find_tag_errors <- function(dat,
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' tags <- prep_tag_sheet(raw_tag_dat)
 #' validate_table(tags, "metadata_acoustictags")
 #'
 #' otn_tagging <- prep_otn_tagging(raw_otn_data)
 #' validate_table(otn_tagging$metadata_animals, "metadata_animals")
+#' }
 validate_table <- function(dat, tbl) {
   # Check colnames match
   if (any(names(dat) != names(dt[[tbl]]))) warning("Column names in `dat` don't match column names in the database table `", tbl, "`.")
