@@ -62,7 +62,7 @@ prep_otn_tagging <- function(dat, db = db) {
   # import full excel file w both tabs into R; others might
   # import the single tab into a single df. On error just
   # say to supply a single df since that's easier.
-  if (class(dat) == "data.frame") {
+  if ("data.frame" %in% class(dat)) {
     ft <- dat
   } else if (class(dat) == "list") {
     message("Assuming 'Tag Metadata' tab in the OTN data template contains the data.")
@@ -180,146 +180,147 @@ prep_otn_tagging <- function(dat, db = db) {
   # As column names may change across version numbers, this is
   # where to check for which version we're on to translate OTN
   # columns to SOMNI db columns.
-  if (v == 4.2) { # might make more sense to simply change all colnames to v4.2 colnames
-    message("Detected OTN tagging metadata template version 4.2.")
+  # This function was developed with template v4.2 as default.
+  message("Detected OTN tagging metadata template version ", v)
 
-    # Clean/prep some fields ----
-    # Length
-    ft$length_type <- toupper(ft$length_type)
-    ft$length2_type <- toupper(ft$length2_type)
-    ft$length_m <- round(as.numeric(ft$length_m), 3)
-    ft$length2_m <- round(as.numeric(ft$length2_m), 3)
-    ft$weight_kg <- round(as.numeric(ft$weight_kg), 3)
-    # Sex
-    ft$sex <- toupper(ft$sex)
-    sex_uncertain <- ifelse(is.na(ft[["comments"]][which(grepl("\\?", ft$sex))]),
-                            "Sex uncertain.",
-                            paste0(ft[["comments"]][which(grepl("\\?", ft$sex))], "; Sex uncertain."))
-    ft[["comments"]][which(grepl("\\?", ft$sex))] <- sex_uncertain
-    ft$sex <- gsub("\\?", "", ft$sex)
-    # Wild/hatchery
-    ft$wild_or_hatchery <- toupper(ft$wild_or_hatchery)
+  if (v < 4.2) ft$harvest_date <- ft$tag_activation_date # harvest_date col does not exist in v <4.2
 
-    # Populate metadata_animals ma ----
-    # First lets populate metadata_animals.
-    ma$somni_id <- ft$somni_id
-    ma$fieldbook_id <- ft$animal_id
-    ma$species_id <- ft$taxon_key
-    ma$recaptured <- FALSE
-    ma$capture_datetime <- janitor::excel_numeric_to_date(as.numeric(ft$harvest_date)) # TO-DO: make this line more robust if dates correctly imported?
-    ma$capture_timezone <- 'UTC'
-    ma$capture_location <- ft$capture_location
-    ma$capture_latitude <- as.numeric(ft$capture_latitude) # TODO: add parzer support
-    ma$capture_longitude <- as.numeric(ft$capture_longitude)
-    ma$capture_depth <- as.numeric(ft$capture_depth_m)
-    ma$depth_unit <- 'm'
-    ma$dead_sample <- FALSE
-    ma$water_temperature <- as.numeric(ft$holding_temperature_degrees_c)
-    ma$water_do <- as.numeric(ft$dissolved_oxygen_ppm)
-    ma$length_unit <- 'm'
-    ma$weight_unit <- 'kg'
-    if (length(ft[["length_m"]][!is.na(ft$length_type == "STANDARD")]) > 0) ma[["standard_length"]][ft$length_type == "STANDARD"] <- ft[["length_m"]][ft$length_type == "STANDARD"]
-    if (length(ft[["length_m"]][!is.na(ft$length_type == "TOTAL")]) > 0) ma[["total_length"]][ft$length_type == "TOTAL"] <- ft[["length_m"]][ft$length_type == "TOTAL"]
-    if (length(ft[["length_m"]][!is.na(ft$length_type == "FORK")]) > 0) ma[["fork_length"]][ft$length_type == "FORK"] <- ft[["length_m"]][ft$length_type == "FORK"]
-    if (length(ft[["length_m"]][!is.na(ft$length_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN"))]) > 0) ma[["disc_width"]][ft$length_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN")] <- ft[["length_m"]][ft$length_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")]
-    if (length(ft[["length2_m"]][!is.na(ft$length2_type == "STANDARD")]) > 0) ma[["standard_length"]][ft$length2_type == "STANDARD"] <- ft[["length2_m"]][ft$length2_type == "STANDARD"]
-    if (length(ft[["length2_m"]][!is.na(ft$length2_type == "TOTAL")]) > 0) ma[["total_length"]][ft$length2_type == "TOTAL"] <- ft[["length2_m"]][ft$length2_type == "TOTAL"]
-    if (length(ft[["length2_m"]][!is.na(ft$length2_type == "FORK")]) > 0) ma[["fork_length"]][ft$length2_type == "FORK"] <- ft[["length2_m"]][ft$length2_type == "FORK"]
-    if (length(ft[["length2_m"]][!is.na(ft$length2_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN"))]) > 0) ma[["disc_width"]][ft$length2_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN")] <- ft[["length2_m"]][ft$length2_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")]
-    ma$weight <- ft$weight_kg
-    ma$sex <- ft$sex
-    ma$age <- ft$age
-    ma$age_unit <- ft$age_units
-    ma$wild_hatchery <- ifelse(ft$wild_or_hatchery %in% c("W", "WILD"),
-                               0, 1)
-    ma$stock <- ft$stock
-    ma$finclips_dna <- ft$dna_sample_taken
-    ma$release_datetime <- janitor::excel_numeric_to_date(as.numeric(ft$utc_release_date_time), include_time = T, tz = "UTC") # TO-DO: make this line more robust if dates correctly imported?
-    ma$release_timezone <- 'UTC'
-    ma$release_location <- ft$release_location
-    ma$release_group <- ft$release_group
-    ma$release_latitude <- as.numeric(ft$release_latitude)
-    ma$release_longitude <- as.numeric(ft$release_longitude)
-    ma$notes <- ft$comments
-    ma$date_updated <- as.Date(ma$date_updated)
+  # Clean/prep some fields ----
+  # Length
+  ft$length_type <- toupper(ft$length_type)
+  ft$length2_type <- toupper(ft$length2_type)
+  ft$length_m <- round(as.numeric(ft$length_m), 3)
+  ft$length2_m <- round(as.numeric(ft$length2_m), 3)
+  ft$weight_kg <- round(as.numeric(ft$weight_kg), 3)
+  # Sex
+  ft$sex <- toupper(ft$sex)
+  sex_uncertain <- ifelse(is.na(ft[["comments"]][which(grepl("\\?", ft$sex))]),
+                          "Sex uncertain.",
+                          paste0(ft[["comments"]][which(grepl("\\?", ft$sex))], "; Sex uncertain."))
+  ft[["comments"]][which(grepl("\\?", ft$sex))] <- sex_uncertain
+  ft$sex <- gsub("\\?", "", ft$sex)
+  # Wild/hatchery
+  ft$wild_or_hatchery <- toupper(ft$wild_or_hatchery)
 
-    # Remove any duplicated rows (caused if one animal
-    # has multiple tags)
-    ma <- ma[!duplicated(ma), ]
+  # Populate metadata_animals ma ----
+  # First lets populate metadata_animals.
+  ma$somni_id <- ft$somni_id
+  ma$fieldbook_id <- ft$animal_id
+  ma$species_id <- ft$taxon_key
+  ma$recaptured <- FALSE
+  ma$capture_datetime <- janitor::excel_numeric_to_date(as.numeric(ft$harvest_date)) # TO-DO: make this line more robust if dates correctly imported?
+  ma$capture_timezone <- 'UTC'
+  ma$capture_location <- ft$capture_location
+  ma$capture_latitude <- as.numeric(ft$capture_latitude) # TODO: add parzer support
+  ma$capture_longitude <- as.numeric(ft$capture_longitude)
+  ma$capture_depth <- as.numeric(ft$capture_depth_m)
+  ma$depth_unit <- 'm'
+  ma$dead_sample <- FALSE
+  ma$water_temperature <- as.numeric(ft$holding_temperature_degrees_c)
+  ma$water_do <- as.numeric(ft$dissolved_oxygen_ppm)
+  ma$length_unit <- 'm'
+  ma$weight_unit <- 'kg'
+  if (length(ft[["length_m"]][!is.na(ft$length_type == "STANDARD")]) > 0) ma[["standard_length"]][ft$length_type == "STANDARD"] <- ft[["length_m"]][ft$length_type == "STANDARD"]
+  if (length(ft[["length_m"]][!is.na(ft$length_type == "TOTAL")]) > 0) ma[["total_length"]][ft$length_type == "TOTAL"] <- ft[["length_m"]][ft$length_type == "TOTAL"]
+  if (length(ft[["length_m"]][!is.na(ft$length_type == "FORK")]) > 0) ma[["fork_length"]][ft$length_type == "FORK"] <- ft[["length_m"]][ft$length_type == "FORK"]
+  if (length(ft[["length_m"]][!is.na(ft$length_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN"))]) > 0) ma[["disc_width"]][ft$length_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN")] <- ft[["length_m"]][ft$length_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")]
+  if (length(ft[["length2_m"]][!is.na(ft$length2_type == "STANDARD")]) > 0) ma[["standard_length"]][ft$length2_type == "STANDARD"] <- ft[["length2_m"]][ft$length2_type == "STANDARD"]
+  if (length(ft[["length2_m"]][!is.na(ft$length2_type == "TOTAL")]) > 0) ma[["total_length"]][ft$length2_type == "TOTAL"] <- ft[["length2_m"]][ft$length2_type == "TOTAL"]
+  if (length(ft[["length2_m"]][!is.na(ft$length2_type == "FORK")]) > 0) ma[["fork_length"]][ft$length2_type == "FORK"] <- ft[["length2_m"]][ft$length2_type == "FORK"]
+  if (length(ft[["length2_m"]][!is.na(ft$length2_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN"))]) > 0) ma[["disc_width"]][ft$length2_type %in% c("DISC", "DISC WIDTH", "WIDTH", "WINGSPAN")] <- ft[["length2_m"]][ft$length2_type %in% c("DISC", "DISC WIDTH", "WINGSPAN")]
+  ma$weight <- ft$weight_kg
+  ma$sex <- ft$sex
+  ma$age <- ft$age
+  ma$age_unit <- ft$age_units
+  ma$wild_hatchery <- ifelse(ft$wild_or_hatchery %in% c("W", "WILD"),
+                             0, 1)
+  ma$stock <- ft$stock
+  ma$finclips_dna <- ft$dna_sample_taken
+  ma$release_datetime <- janitor::excel_numeric_to_date(as.numeric(ft$utc_release_date_time), include_time = T, tz = "UTC") # TO-DO: make this line more robust if dates correctly imported?
+  ma$release_timezone <- 'UTC'
+  ma$release_location <- ft$release_location
+  ma$release_group <- ft$release_group
+  ma$release_latitude <- as.numeric(ft$release_latitude)
+  ma$release_longitude <- as.numeric(ft$release_longitude)
+  ma$notes <- ft$comments
+  ma$date_updated <- as.Date(ma$date_updated)
 
-    # Split ft into acoustic & sat ----
-    # Split up ft into ft acoustic and ft satellite
-    # Now that ma is complete, split up ft row-wise by tag type
-    if (has_sat) {
-      ft_s <- ft[grep("sat", tolower(ft$tag_type)),]
-      ft <- ft[grep("acoustic", tolower(ft$tag_type)),]
-      }
+  # Remove any duplicated rows (caused if one animal
+  # has multiple tags)
+  ma <- ma[!duplicated(ma), ]
 
-    # Populate acoustic_animals aa ----
-    # Next populate acoustic_animals.
-    # Functionally, 'ft' now only has acoustic data.
-    # If sat tag data is present, it is now in 'ft_s' (see above code)
-    aa$animal_tag <- max_animal_tag + as.numeric(rownames(aa))
-    aa$somni_id <- ft$somni_id
-    aa$vue_id <- ft$tag_id_code
-    aa$tag_serial <- ft$tag_serial_number
-    aa$vue_tag_id <- paste0(stringr::word(ft$tag_code_space, sep = "-", start = 1, end = 2), "-", aa$vue_id)
-    aa$vue_tag_id <- ifelse(toupper(ft$tag_type) == "ACOUSTIC", aa$vue_tag_id, NA)
-    aa$activation_timezone <- 'UTC'
-    aa$implant_type <- ft$tag_implant_type
-    aa$implant_method <- ft$tag_implant_method
-    aa$tagger <- ft$tagger
-    aa$tagging_pi <- ft$tag_owner_pi
-    aa$tagging_organization <- ft$tag_owner_organization
-    aa$holding_time <- ft$preop_hold_period
-    aa$recovery_time <- ft$postop_hold_period
-    aa$holding_temperature <- ft$holding_temperature_degrees_c
-    aa$holding_do <- ft$dissolved_oxygen_ppm
-    aa$surgery_datetime <- as.Date(ft$date_of_surgery)
-    aa$surgery_timezone <- 'UTC'
-    aa$surgery_location <- ft$surgery_location
-    aa$surgery_latitude <- as.numeric(ft$surgery_latitude)
-    aa$surgery_longitude <- as.numeric(ft$surgery_longitude)
-    aa$sedative <- ft$sedative
-    aa$sedative_ppm <- ft$sedative_concentration_ppm
-    aa$anesthetic <- ft$anaesthetic
-    aa$buffer <- ft$buffer
-    aa$anesthetic_ppm <- ft$anaesthetic_concentration_ppm
-    aa$buffer_anesthesia_ppm <- ft$buffer_concentration_in_anaesthetic_ppm
-    aa$anesthetic_recirc_ppm <- ft$anaesthetic_concentration_in_recirculation_ppm
-    aa$buffer_recirc_ppm <- ft$buffer_concentration_in_recirculation_ppm
-    aa$notes <- ifelse(toupper(ft$tag_type) == "ACOUSTIC", NA, "Satellite tag")
-    aa$date_updated <- as.Date(aa$date_updated)
-    aa$recaptured <- FALSE
-
-    # Populate satellite tag data ----
-    if (has_sat) {
-      # Populate tag metadata first
-      ms$sattag_pk <- max_sat_ms + as.numeric(rownames(ms))
-      ms$program_number <- ft_s$tag_id_code
-      ms$sattag_sn <- ft_s$tag_serial_number
-      ms$sattag_model <- ft_s$tag_model
-      ms$sattag_brand <- ft_s$tag_manufacturer
-      ms$sattag_owner <- apply(cbind(ft_s$tag_owner_organization, ft_s$tag_owner_pi), 1,
-                               function(x) paste(x[!is.na(x)], collapse = ", "))
-      ms[["sattag_owner"]][ms$sattag_owner == ""] <- NA
-      ms$tag_life <- ft_s$est_tag_life
-      ms$activation_datetime <- ft_s$tag_activation_date
-      ms$activation_timezone <- 'UTC'
-
-      # Next populate satellite_animals sa
-      sa$animal_tag <- max_sat_sa + as.numeric(rownames(sa))
-      sa$somni_id <- ft_s$somni_id
-      sa$sattag_pk <- ms$sattag_pk
-      sa$attachment_method <- ft_s$tag_implant_type
-      sa$attachment_datetime <- ft_s$date_of_surgery
-      sa$attachment_timezone <- 'UTC'
-      sa$initialization_datetime <- ft_s$tag_activation_date
-      sa$initialization_timezone <- 'UTC'
+  # Split ft into acoustic & sat ----
+  # Split up ft into ft acoustic and ft satellite
+  # Now that ma is complete, split up ft row-wise by tag type
+  if (has_sat) {
+    ft_s <- ft[grep("sat", tolower(ft$tag_type)),]
+    ft <- ft[grep("acoustic", tolower(ft$tag_type)),]
     }
 
+  # Populate acoustic_animals aa ----
+  # Next populate acoustic_animals.
+  # Functionally, 'ft' now only has acoustic data.
+  # If sat tag data is present, it is now in 'ft_s' (see above code)
+  aa$animal_tag <- max_animal_tag + as.numeric(rownames(aa))
+  aa$somni_id <- ft$somni_id
+  aa$vue_id <- ft$tag_id_code
+  aa$tag_serial <- ft$tag_serial_number
+  aa$vue_tag_id <- paste0(stringr::word(ft$tag_code_space, sep = "-", start = 1, end = 2), "-", aa$vue_id)
+  aa$vue_tag_id <- ifelse(toupper(ft$tag_type) == "ACOUSTIC", aa$vue_tag_id, NA)
+  aa$activation_timezone <- 'UTC'
+  aa$implant_type <- ft$tag_implant_type
+  aa$implant_method <- ft$tag_implant_method
+  aa$tagger <- ft$tagger
+  aa$tagging_pi <- ft$tag_owner_pi
+  aa$tagging_organization <- ft$tag_owner_organization
+  aa$holding_time <- ft$preop_hold_period
+  aa$recovery_time <- ft$postop_hold_period
+  aa$holding_temperature <- ft$holding_temperature_degrees_c
+  aa$holding_do <- ft$dissolved_oxygen_ppm
+  aa$surgery_datetime <- as.Date(ft$date_of_surgery)
+  aa$surgery_timezone <- 'UTC'
+  aa$surgery_location <- ft$surgery_location
+  aa$surgery_latitude <- as.numeric(ft$surgery_latitude)
+  aa$surgery_longitude <- as.numeric(ft$surgery_longitude)
+  aa$sedative <- ft$sedative
+  aa$sedative_ppm <- ft$sedative_concentration_ppm
+  aa$anesthetic <- ft$anaesthetic
+  aa$buffer <- ft$buffer
+  aa$anesthetic_ppm <- ft$anaesthetic_concentration_ppm
+  aa$buffer_anesthesia_ppm <- ft$buffer_concentration_in_anaesthetic_ppm
+  aa$anesthetic_recirc_ppm <- ft$anaesthetic_concentration_in_recirculation_ppm
+  aa$buffer_recirc_ppm <- ft$buffer_concentration_in_recirculation_ppm
+  aa$notes <- ifelse(toupper(ft$tag_type) == "ACOUSTIC", NA, "Satellite tag")
+  aa$date_updated <- as.Date(aa$date_updated)
+  aa$recaptured <- FALSE
+
+  # Populate satellite tag data ----
+  if (has_sat) {
+    # Populate tag metadata first
+    ms$sattag_pk <- max_sat_ms + as.numeric(rownames(ms))
+    ms$program_number <- ft_s$tag_id_code
+    ms$sattag_sn <- ft_s$tag_serial_number
+    ms$sattag_model <- ft_s$tag_model
+    ms$sattag_brand <- ft_s$tag_manufacturer
+    ms$sattag_owner <- apply(cbind(ft_s$tag_owner_organization, ft_s$tag_owner_pi), 1,
+                             function(x) paste(x[!is.na(x)], collapse = ", "))
+    ms[["sattag_owner"]][ms$sattag_owner == ""] <- NA
+    ms$tag_life <- ft_s$est_tag_life
+    ms$activation_datetime <- ft_s$tag_activation_date
+    ms$activation_timezone <- 'UTC'
+
+    # Next populate satellite_animals sa
+    sa$animal_tag <- max_sat_sa + as.numeric(rownames(sa))
+    sa$somni_id <- ft_s$somni_id
+    sa$sattag_pk <- ms$sattag_pk
+    sa$attachment_method <- ft_s$tag_implant_type
+    sa$attachment_datetime <- ft_s$date_of_surgery
+    sa$attachment_timezone <- 'UTC'
+    sa$initialization_datetime <- ft_s$tag_activation_date
+    sa$initialization_timezone <- 'UTC'
   }
 
+  # Return message ----
   # Number of rows of original data, minus metadata rows,
   # minus header row, minus sample data row (if present)
   nrow_dat <- ifelse(s_yn, (orig_n - nrow(meta) - 2), (orig_n - nrow(meta) - 1))
@@ -335,7 +336,7 @@ prep_otn_tagging <- function(dat, db = db) {
           * Assuming all timestamps in UTC.
           * Assuming all lengths in m.
           * Assuming all weights in kg.
-          * Assuming values present in the 'HARVEST_DATE' column are equivalent to capture date/time.
+          * Assuming values present in the ", ifelse(v < 4.2, "TAG_ACTIVATION_DATE", "HARVEST_DATE"), " column are equivalent to capture date/time.
           * FLOY tag columns left blank; FLOY tags will need to be manually added as the OTN sheet does not have a dedicated FLOY column.
           * ", length(sex_uncertain), " records had a ? in the sex column, therefore the phrase 'sex uncertain' was added to the comments column but the ? was removed. E.g., 'F?' becomes 'F', but with a note added to the comments column that the sex was uncertain.")
 
@@ -379,7 +380,7 @@ prep_otn_deployment <- function(dat, db = db) {
   # import full excel file w both tabs into R; others might
   # import the single tab into a single df. On error just
   # say to supply a single df since that's easier.
-  if (class(dat) == "data.frame") {
+  if ("data.frame" %in% class(dat)) {
     d <- dat
   } else if (class(dat) == "list") {
     message("Assuming 'Deployment' tab in the OTN data template contains the data.")
