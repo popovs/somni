@@ -18,6 +18,7 @@ A list containing two dataframes, each corresponding to the respective table in 
 Prepare OTN tagging metadata sheet for SOMNI db
 }
 \examples{
+\dontrun{
 drv <- RPostgres::Postgres()
 db <- DBI::dbConnect(drv = drv,
                      host = host,
@@ -27,4 +28,5 @@ db <- DBI::dbConnect(drv = drv,
 
 tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
 prep_otn_tagging(tm, db = db)
+}
 }

@@ -24,9 +24,11 @@ to check that:
 }
 }
 \examples{
+\dontrun{
 tags <- prep_tag_sheet(raw_tag_dat)
 validate_table(tags, "metadata_acoustictags")
 
 otn_tagging <- prep_otn_tagging(raw_otn_data)
 validate_table(otn_tagging$metadata_animals, "metadata_animals")
+}
 }

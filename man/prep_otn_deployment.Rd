@@ -7,7 +7,7 @@
 prep_otn_deployment(dat, db = db)
 }
 \arguments{
-\item{dat}{A dataframe containing OTN tagging metadata, including the template header with the OTN logo, template version number, and instructions.}
+\item{dat}{A dataframe containing OTN deployment metadata, including the template header with the OTN logo, template version number, and instructions.}
 
 \item{db}{Name of SOMNI database connection object in R workspace. Defaults to "db".}
 }
@@ -16,4 +16,17 @@ A list containing up to 11 dataframes, either corresponding to their respective 
 }
 \description{
 Prepare OTN instrument metadata sheet for SOMNI db
+}
+\examples{
+\dontrun{
+drv <- RPostgres::Postgres()
+db <- DBI::dbConnect(drv = drv,
+                     host = host,
+                     dbname = "somni",
+                     user = user,
+                     password = password)
+
+dm <- readxl::read_excel("OTN_deployments.xslx", sheet = "Deployment")
+prep_otn_deployment(dm, db = db)
+}
 }

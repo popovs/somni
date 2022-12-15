@@ -49,7 +49,9 @@ animals at once! This will only cause errors in your detection data if
 recaptures are not properly updated in the database.
 }
 \examples{
+\dontrun{
 tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
 prepped_otn <- prep_otn_tagging(tm, db = db)
 validate_acoustic_animals(prepped_otn$acoustic_animals)
+}
 }
