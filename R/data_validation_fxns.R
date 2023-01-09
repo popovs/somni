@@ -405,7 +405,11 @@ find_tag_errors <- function(dat,
                             full_output = F) {
   if (missing(db) & missing(tags)) stop("This function needs either a list of tags or access to the database to function!")
   if (missing(db)) warning("Tag error checking will be limited in scope without access to the full list of tags in the database!")
-  aa <- dat
+  if (class(dat) == 'list') {
+    aa <- dat[["acoustic_animals"]]
+  } else {
+    aa <- dat
+  }
 
   # If db connection provided, pull all tag info
   if (!missing(db)) {

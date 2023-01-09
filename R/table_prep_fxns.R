@@ -15,12 +15,14 @@
 #' prep_tag_sheet(TagSheet)
 #' }
 prep_tag_sheet <- function(tags) {
+  # Data checks
   message("Preparing tag sheets for SOMNI db ingestion. Assuming standard Vemco/Innovasea sales order tag sheets.")
-  #data(cols)
   stopifnot("Supplied tag sheet must be class 'data.frame' or 'tibble'." = any(class(tags) %in% c("data.frame", "tibble")))
+  if (length(tags) < 44) stop("There should be at least 44 columns from 'Sales Order' to 'Ship Date', inclusive. Some columns are missing from your data.")
+  if (length(tags) > 44) warning("Your tag sheet has greater than 44 columns. SOMNI db currently does not support HTI and ADST columns, and will therefore skip importing those columns.")
+  # Begin processing
   tags <- janitor::clean_names(tags)
   tags <- dplyr::select(tags, sales_order:ship_date)
-  stopifnot("There should be exactly 44 columns from 'Sales Order' to 'Ship Date', inclusive. \nSOMNI db currently does not support HTI columns." = (length(tags) == 44))
   # Coerce date coltypes
   tags$ship_date <- as.Date(tags$ship_date)
   tags$date_updated <- NA
