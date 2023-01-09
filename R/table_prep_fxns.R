@@ -17,7 +17,7 @@
 prep_tag_sheet <- function(tags) {
   message("Preparing tag sheets for SOMNI db ingestion. Assuming standard Vemco/Innovasea sales order tag sheets.")
   #data(cols)
-  stopifnot("Supplied tag sheet must be class 'data.frame' or 'tibble'." = (class(tags) %in% c("data.frame", "tibble")))
+  stopifnot("Supplied tag sheet must be class 'data.frame' or 'tibble'." = any(class(tags) %in% c("data.frame", "tibble")))
   tags <- janitor::clean_names(tags)
   tags <- dplyr::select(tags, sales_order:ship_date)
   stopifnot("There should be exactly 44 columns from 'Sales Order' to 'Ship Date', inclusive. \nSOMNI db currently does not support HTI columns." = (length(tags) == 44))
