@@ -32,7 +32,9 @@ number, in addition to the original tag purchase sheets, you
 can easily look up the complete tag ID.
 }
 \examples{
+\dontrun{
 tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
 prepped_otn <- prep_otn_tagging(tm, db = db)
 fill_tag_id(prepped_otn$acoustic_animals, db = db)
+}
 }

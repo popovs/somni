@@ -72,5 +72,7 @@ The truncated output only includes the \code{record_id}, original tag data,
 suggested tag fixes, and the \code{fix} column describing the fix.
 }
 \examples{
+\dontrun{
 find_tag_errors(ft$acoustic_animals, tags = tags, db = db)
+}
 }

@@ -45,9 +45,11 @@
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
 #' prepped_otn <- prep_otn_tagging(tm, db = db)
 #' validate_acoustic_animals(prepped_otn$acoustic_animals)
+#' }
 validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
                                  tags = NA, # optional - dataframe containing tags that haven't been uploaded to db yet
                                  db = db) {
@@ -286,9 +288,11 @@ validate_acoustic_animals <- function(dat, # acoustic_animals dataframe
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' tm <- readxl::read_excel("OTN_tagging_sheet.xslx", sheet = "Tag Metadata")
 #' prepped_otn <- prep_otn_tagging(tm, db = db)
 #' fill_tag_id(prepped_otn$acoustic_animals, db = db)
+#' }
 fill_tag_id <- function(dat,
                         tags = NA,
                         db = db,
@@ -392,14 +396,20 @@ fill_tag_id <- function(dat,
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' find_tag_errors(ft$acoustic_animals, tags = tags, db = db)
+#' }
 find_tag_errors <- function(dat,
                             tags = NA,
                             db = db,
                             full_output = F) {
   if (missing(db) & missing(tags)) stop("This function needs either a list of tags or access to the database to function!")
   if (missing(db)) warning("Tag error checking will be limited in scope without access to the full list of tags in the database!")
-  aa <- dat
+  if (class(dat) == 'list') {
+    aa <- dat[["acoustic_animals"]]
+  } else {
+    aa <- dat
+  }
 
   # If db connection provided, pull all tag info
   if (!missing(db)) {
@@ -517,4 +527,52 @@ find_tag_errors <- function(dat,
   } else {
     return(out[,c("record_id", "orig_sn", "orig_vid", "orig_tag", "suggested_sn", "suggested_vid", "suggested_tag", "fix")])
   }
+}
+
+
+#' Validate data for database import
+#'
+#' This function takes a supplied dataframe and a database table
+#' to check that:
+#' 1) the column names of the dataframe match the column names of the database table
+#' 2) all non-NULL columns have no NULL values
+#' 3) all column data types of the dataframe match the column data types of the database table
+#'
+#' @param dat A dataframe containing data to be appended to a SOMNI db table.
+#' @param tbl The name of a SOMNI db table (e.g., "metadata_acoustictags" or "deployments_retrievals").
+#'
+#' @return Warnings if any validation checks fail
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' tags <- prep_tag_sheet(raw_tag_dat)
+#' validate_table(tags, "metadata_acoustictags")
+#'
+#' otn_tagging <- prep_otn_tagging(raw_otn_data)
+#' validate_table(otn_tagging$metadata_animals, "metadata_animals")
+#' }
+validate_table <- function(dat, tbl) {
+  # Check colnames match
+  if (any(names(dat) != names(dt[[tbl]]))) warning("Column names in `dat` don't match column names in the database table `", tbl, "`.")
+
+  # Check all required columns are not null
+  non_nulls <- db_tbls[db_tbls$table_name == tbl & db_tbls$is_nullable == "NO",]
+  for (i in non_nulls$column_name) {
+    if (any(is.na(dat[[i]]))) {
+      warning("Column ", i, " has null values. This column is not allowed to have null values in the database.")
+    }
+  }
+
+  # Check dat coltypes match db coltypes
+  coltypes <- unlist(dt[[tbl]], use.names = F)
+  coltypes <- coltypes[coltypes != "POSIXt"] # Drop POSIXt
+  coltypes[grep("geography", coltypes)] <- "character" # postgres geog columns will be eval'd as character
+  coltypes[grep("integer64", coltypes)] <- "integer" # postgres integer64 columns will be eval'd as integer
+
+  dat2 <- as.data.frame(Map(function(x, y) get(y)(x),
+                             dat,
+                             paste0("as.", coltypes)))
+
+  if (!(any(dt[[tbl]] %in% sapply(dat2, class)))) warning("Some column types in `dat` don't match the column types of the database table `", tbl, "` in the database. See `data(dt)` to check column types in each db table.")
 }
