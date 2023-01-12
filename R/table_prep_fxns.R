@@ -564,7 +564,7 @@ prep_otn_deployment <- function(dat, db = db) {
   # First filter out any 'recovered' or 'lost' data
   # TODO: This will fail if OTN updates the column names w/o adding version numbers to templates...
   lost0 <- d[grep('l', d$recovered_y_n_l, ignore.case = T), ]
-  retrievals0 <- d[grep('y', d$recovered_y_n_l, ignore.case = T), ]
+  retrievals0 <- d[!is.na(d$recover_date_time_yyyy_mm_dd_thh_mm_ss),] #d[grep('y', d$recovered_y_n_l, ignore.case = T), ]
 
   if (nrow(lost0) > 0) {
     lost0$station_id <- as.integer(lost0$station_id)
@@ -671,8 +671,8 @@ prep_otn_deployment <- function(dat, db = db) {
   # Deployments ----
   # Finally, deploy the current year's gear
 
-  # Choose records where deployment actually happened, vs. lost ones
-  dd <- d[!is.na(d$deploy_date_time_yyyy_mm_dd_thh_mm_ss) & d$recovered_y_n_l %in% c("Y", "y", "new"),]
+  # Choose records where deployment actually happened
+  dd <- d[!is.na(d$deploy_date_time_yyyy_mm_dd_thh_mm_ss), ]
   ddrow <- nrow(dd)
 
   # Merge any new stations to dd
@@ -707,7 +707,7 @@ prep_otn_deployment <- function(dat, db = db) {
   deploy_ids <- as.data.frame(unique(dd$station_no))
   names(deploy_ids) <- "station_no"
   deploy_ids$deploy_id <- max_deploy_id + as.numeric(row.names(deploy_ids))
-  dd <- merge(dd, deploy_ids)
+  dd <- merge(dd, deploy_ids, all.x = TRUE)
   if(ddrow != nrow(dd)) warning("Merging new deploy_ids into dd resulted in extra records.")
 
   # Create deployments df
@@ -740,12 +740,14 @@ prep_otn_deployment <- function(dat, db = db) {
   d_rel <- d_rel[!grepl("VR2AR", d_rel$temp),] # We exclude AR2ARs from release metadata
   d_rel <- d_rel[,1:(length(d_rel) - 1)] # Get rid of temp column
   d_rel <- d_rel[!is.na(d_rel$release_sn),]
+  d_rel <- unique(d_rel) # In case deployments have same release but multiple receivers
 
   # deployment_receiver
   d_rec <- setNames(data.frame(matrix(nrow = nrow(dd), ncol = length(cols$deployment_receiver))), cols$deployment_receiver)
   d_rec$deploy_id <- dd$deploy_id
   d_rec$receiver_sn <- dd$ins_serial_no
   d_rec <- d_rec[!is.na(d_rec$receiver_sn),]
+  d_rec <- unique(d_rec)
 
   # deployment_sensor
   d_sen.x <- setNames(dd[,c("deploy_id", "sensor_id.x")], c("deploy_id", "sensor_id"))
@@ -754,6 +756,7 @@ prep_otn_deployment <- function(dat, db = db) {
   d_sen <- setNames(data.frame(matrix(nrow = nrow(d_sen.x), ncol = length(cols$deployment_sensor))), cols$deployment_sensor)
   d_sen$deploy_id <- d_sen.x$deploy_id
   d_sen$sensor_id <- d_sen.x$sensor_id
+  d_sen <- unique(d_sen)
   rm(d_sen.x)
 
   # Return dfs ----
@@ -786,7 +789,7 @@ prep_otn_deployment <- function(dat, db = db) {
   # Number of rows of original data, minus metadata rows,
   # minus header row, minus sample data row (if present)
   nrow_dat <- ifelse(s_yn, (orig_n - nrow(meta) - 2), (orig_n - nrow(meta) - 1))
-  message(nrow(retrievals), " station retrievals and ", nrow(dr), " new deployments out of ", nrow_dat, " records were successfully prepared for SOMNI db import. This includes:
+  message(nrow(retrievals), " recoveries and ", nrow(dr), " new deployments out of ", nrow_dat, " records were successfully prepared for SOMNI db import. This includes:
           * ", ifelse(exists("lost0"), nrow(lost0), 0), " lost stations
           * ", ifelse(exists("retrievals0"), nrow(retrievals0), 0), " successfully retrieved stations
           * ", ifelse(exists("ns"), nrow(ns), 0), " newly created stations (metadata_stations)
