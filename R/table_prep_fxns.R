@@ -588,6 +588,8 @@ prep_otn_deployment <- function(dat, db = db) {
     retrievals$retrieval_longitude <- suppressWarnings(parzer::parse_lon(retrievals0$recover_long_ddd_ddddd))
     retrievals$retrieved_by <- retrievals0$deployed_by_lead_technicians
 
+    retrievals <- unique(retrievals)
+
     # I.e., this is the last known location of these receivers - need retrieval info!
     # TODO: unretrieved_sensors
     unretrieved <- db_deployed[db_deployed$deploy_id %!in% retrievals$deploy_id,]
